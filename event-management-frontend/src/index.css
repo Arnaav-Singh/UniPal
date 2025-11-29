@@ -1,0 +1,154 @@
+/* Tailwind base layer definitions and custom theme tokens for UniPal. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 32 58% 97%;
+    --foreground: 354 53% 16%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 354 53% 16%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 354 53% 16%;
+
+    --primary: 350 69% 37%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 36 68% 92%;
+    --secondary-foreground: 349 46% 26%;
+
+    --muted: 28 36% 90%;
+    --muted-foreground: 17 21% 37%;
+
+    --accent: 219 57% 21%;
+    --accent-foreground: 210 40% 98%;
+
+    --success: 146 50% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 62%;
+    --warning-foreground: 25 85% 15%;
+
+    --destructive: 4 68% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 24 36% 86%;
+    --input: 24 36% 86%;
+    --ring: 350 69% 37%;
+
+    /* University theme colors */
+    --university-blue: 219 57% 21%;
+    --university-gold: 38 92% 62%;
+    --university-light: 30 52% 94%;
+    --university-gray: 216 14% 42%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(350 69% 45%) 0%, hsl(219 57% 24%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(38 92% 62%) 0%, hsl(350 69% 45%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(32 58% 98%) 0%, hsl(32 52% 94%) 100%);
+
+    /* Shadows */
+    --shadow-card: 0 22px 48px -30px hsl(219 57% 24% / 0.38);
+    --shadow-button: 0 15px 35px -20px hsl(350 69% 45% / 0.45);
+    --shadow-glow: 0 0 55px hsl(38 92% 62% / 0.32);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 99%;
+    --sidebar-foreground: 354 35% 20%;
+    --sidebar-primary: 350 69% 37%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 36 68% 92%;
+    --sidebar-accent-foreground: 349 46% 26%;
+    --sidebar-border: 25 28% 85%;
+    --sidebar-ring: 350 69% 37%;
+  }
+
+  .dark {
+    --background: 226 40% 8%;
+    --foreground: 30 30% 96%;
+
+    --card: 226 32% 12%;
+    --card-foreground: 30 30% 96%;
+
+    --popover: 226 32% 12%;
+    --popover-foreground: 30 30% 96%;
+
+    --primary: 350 76% 58%;
+    --primary-foreground: 26 100% 8%;
+
+    --secondary: 222 24% 18%;
+    --secondary-foreground: 38 92% 92%;
+
+    --muted: 215 22% 20%;
+    --muted-foreground: 210 16% 72%;
+
+    --accent: 217 60% 32%;
+    --accent-foreground: 220 40% 96%;
+
+    --success: 146 45% 46%;
+    --success-foreground: 160 30% 14%;
+
+    --warning: 38 92% 62%;
+    --warning-foreground: 26 100% 10%;
+
+    --destructive: 4 70% 56%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 222 26% 26%;
+    --input: 222 26% 26%;
+    --ring: 350 76% 58%;
+
+    /* Dark theme gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(350 76% 58%) 0%, hsl(217 60% 32%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(38 90% 58%) 0%, hsl(350 68% 46%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(222 24% 16%) 0%, hsl(222 22% 20%) 100%);
+
+    /* Dark shadows */
+    --shadow-card: 0 24px 52px -32px hsl(219 60% 32% / 0.45);
+    --shadow-button: 0 18px 40px -26px hsl(350 76% 58% / 0.5);
+    --shadow-glow: 0 0 52px hsl(38 90% 58% / 0.3);
+    --sidebar-background: 222 24% 16%;
+    --sidebar-foreground: 38 90% 92%;
+    --sidebar-primary: 350 76% 58%;
+    --sidebar-primary-foreground: 26 100% 8%;
+    --sidebar-accent: 217 60% 32%;
+    --sidebar-accent-foreground: 38 90% 92%;
+    --sidebar-border: 220 24% 24%;
+    --sidebar-ring: 350 76% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    position: relative;
+    min-height: 100vh;
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60% 70% at 15% 15%, hsl(350 69% 52% / 0.16), transparent 60%),
+      radial-gradient(45% 60% at 85% 20%, hsl(38 92% 66% / 0.22), transparent 65%),
+      radial-gradient(65% 70% at 50% 85%, hsl(219 57% 26% / 0.18), transparent 70%);
+    filter: saturate(110%);
+  }
+}
