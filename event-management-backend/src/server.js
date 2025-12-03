@@ -124,6 +124,11 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Version check endpoint
+app.get('/api/version', (req, res) => {
+  res.json({ version: '1.1.0', features: ['reports', 'excel-export', 'logo-fix'] });
+});
+
 // Routes
 app.use("/api/auth", (req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
