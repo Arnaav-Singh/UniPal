@@ -528,6 +528,8 @@ class APIService {
 		important_contacts?: EventContact[];
 		requires_approval?: boolean;
 		approval_notes?: string;
+		sdg?: string[];
+		guest_speakers?: string[];
 	}): Promise<Event> {
 		const payload = {
 			name: eventData.title,
@@ -550,6 +552,8 @@ class APIService {
 			importantContacts: mapContactsToBackend(eventData.important_contacts),
 			requiresApproval: eventData.requires_approval,
 			approvalNotes: eventData.approval_notes,
+			sdg: eventData.sdg,
+			guestSpeakers: eventData.guest_speakers,
 		};
 		const created = await http<BackendEvent>('/api/events', {
 			method: 'POST',
@@ -577,6 +581,8 @@ class APIService {
 		budget?: { currency?: string; amount?: number };
 		agenda?: EventAgendaItem[];
 		important_contacts?: EventContact[];
+		sdg?: string[];
+		guest_speakers?: string[];
 	}): Promise<Event> {
 		const payload = {
 			title: eventData.title,
@@ -597,6 +603,8 @@ class APIService {
 			budget: eventData.budget,
 			agenda: mapAgendaToBackend(eventData.agenda),
 			importantContacts: mapContactsToBackend(eventData.important_contacts),
+			sdg: eventData.sdg,
+			guestSpeakers: eventData.guest_speakers,
 		};
 		const created = await http<BackendEvent>('/api/coordinators/events', {
 			method: 'POST',
@@ -810,8 +818,8 @@ class APIService {
 		const data = await http<BackendFeedback>(`/api/feedback/${feedbackData.event_id}`, {
 			method: 'POST',
 			headers: { ...authHeaders() },
-			body: JSON.stringify({ 
-				rating: feedbackData.rating, 
+			body: JSON.stringify({
+				rating: feedbackData.rating,
 				comments: feedbackData.comments,
 				code: feedbackData.code,
 			}),
@@ -833,7 +841,7 @@ class APIService {
 	}
 
 	async generateEventReport(eventId: string, payload: { summary: string; photos: string[]; }): Promise<Blob> {
-		const res = await fetch(`${API_BASE_URL}/api/events/${eventId}/report`, {
+		const res = await fetch(`${API_BASE_URL}/api/reports/event/${eventId}/pdf`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -846,6 +854,22 @@ class APIService {
 		if (!res.ok) {
 			const text = await res.text();
 			throw new Error(text || 'Failed to generate report');
+		}
+		return await res.blob();
+	}
+
+	async exportEvents(): Promise<Blob> {
+		const res = await fetch(`${API_BASE_URL}/api/reports/export/excel`, {
+			method: 'GET',
+			headers: {
+				...authHeaders(),
+			},
+			credentials: 'include',
+		});
+
+		if (!res.ok) {
+			const text = await res.text();
+			throw new Error(text || 'Failed to export events');
 		}
 		return await res.blob();
 	}

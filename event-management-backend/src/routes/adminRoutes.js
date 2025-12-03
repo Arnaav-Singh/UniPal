@@ -2,7 +2,7 @@
 import express from 'express';
 const router = express.Router();
 import { getUsers, createUser, deleteUser, getAllEvents } from '../controllers/adminController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 
 const deanRoles = ['dean', 'superadmin'];

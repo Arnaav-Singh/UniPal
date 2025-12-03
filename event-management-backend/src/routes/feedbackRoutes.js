@@ -4,7 +4,7 @@ const router = express.Router();
 import { submitFeedback, getFeedbackForEvent } from '../controllers/feedbackController.js';
 import { body, param } from 'express-validator';
 import { validate } from '../middleware/validateRequest.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 
 router.post('/:eventId',
   authMiddleware,

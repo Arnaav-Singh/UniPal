@@ -1,7 +1,7 @@
 // Notification CRUD endpoints requiring authentication.
 import express from 'express';
 import { sendNotification, getNotifications, markAsRead } from '../controllers/notificationController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 router.post('/', authMiddleware, sendNotification);

@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 
 
 const eventSchema = new mongoose.Schema({
-  eventID: { type: String, unique: true, default: function() { return this._id.toString(); } },
+  eventID: { type: String, unique: true, default: function () { return this._id.toString(); } },
   name: { type: String, required: true },
   date: { type: String, required: true },
   location: { type: String, required: true },
@@ -29,6 +29,19 @@ const eventSchema = new mongoose.Schema({
     default: 'in-person',
   },
   tags: [{ type: String }],
+  sdg: [{
+    type: String,
+    enum: [
+      'SDG1: No Poverty', 'SDG2: Zero Hunger', 'SDG3: Good Health and Well-being',
+      'SDG4: Quality Education', 'SDG5: Gender Equality', 'SDG6: Clean Water and Sanitation',
+      'SDG7: Affordable and Clean Energy', 'SDG8: Decent Work and Economic Growth',
+      'SDG9: Industry, Innovation and Infrastructure', 'SDG10: Reduced Inequalities',
+      'SDG11: Sustainable Cities and Communities', 'SDG12: Responsible Consumption and Production',
+      'SDG13: Climate Action', 'SDG14: Life Below Water', 'SDG15: Life on Land',
+      'SDG16: Peace, Justice and Strong Institutions', 'SDG17: Partnerships for the Goals'
+    ],
+  }],
+  guestSpeakers: [{ type: String }],
   sponsors: [{ type: String }],
   budget: {
     currency: { type: String, default: 'INR' },

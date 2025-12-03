@@ -68,6 +68,7 @@ import {
   XCircle,
   BarChart3,
   Search,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -548,6 +549,30 @@ export default function DeanDashboard() {
       return format(new Date(dateString), 'dd MMM yyyy, hh:mm a');
     } catch {
       return dateString;
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const blob = await apiService.exportEvents();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `events-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({
+        title: 'Export successful',
+        description: 'Event data has been exported to Excel.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Export failed',
+        description: error instanceof Error ? error.message : 'Failed to export events.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -1259,11 +1284,15 @@ export default function DeanDashboard() {
         </Card>
 
         <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
               Event Pipeline
             </CardTitle>
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel}>
+              <Download className="w-4 h-4" />
+              Export Excel
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="rounded-md border overflow-x-auto">
@@ -1288,137 +1317,137 @@ export default function DeanDashboard() {
 
                     return (
                       <TableRow key={event.id}>
-                      <TableCell className="font-medium">
-                        <div>
-                          <p>{event.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {event.school || DEFAULT_SCHOOL}{event.department ? ` • ${event.department}` : ''}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatDate(event.date)}</TableCell>
-                      <TableCell>{event.location}</TableCell>
-                      <TableCell>
-                        {event.coordinator_names.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {event.coordinator_names.map((name) => (
-                              <Badge key={name} variant="secondary">{name}</Badge>
-                            ))}
+                        <TableCell className="font-medium">
+                          <div>
+                            <p>{event.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {event.school || DEFAULT_SCHOOL}{event.department ? ` • ${event.department}` : ''}
+                            </p>
                           </div>
-                        ) : (
-                          <Badge variant="outline" className="text-muted-foreground">Unassigned</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <Badge variant={event.status === 'completed' ? 'secondary' : 'default'}>
-                            {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                          </Badge>
-                          <Badge variant="outline">{event.invitation_mode === 'invite-only' ? 'Invite-only' : 'Open'}</Badge>
-                          <Badge
-                            variant={event.approval_status === 'approved' ? 'secondary' : event.approval_status === 'pending' ? 'outline' : 'destructive'}
-                            className="capitalize"
-                          >
-                            {event.approval_status}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Dialog
-                            open={isDetailOpen}
-                            onOpenChange={(open) => {
-                              if (open) {
-                                handleViewEvent(event);
-                                setDetailEvent(event);
-                              } else {
-                                setDetailEvent(null);
-                                setEventInvitations([]);
-                              }
-                            }}
-                          >
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
+                        </TableCell>
+                        <TableCell>{formatDate(event.date)}</TableCell>
+                        <TableCell>{event.location}</TableCell>
+                        <TableCell>
+                          {event.coordinator_names.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {event.coordinator_names.map((name) => (
+                                <Badge key={name} variant="secondary">{name}</Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">Unassigned</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Badge variant={event.status === 'completed' ? 'secondary' : 'default'}>
+                              {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                            </Badge>
+                            <Badge variant="outline">{event.invitation_mode === 'invite-only' ? 'Invite-only' : 'Open'}</Badge>
+                            <Badge
+                              variant={event.approval_status === 'approved' ? 'secondary' : event.approval_status === 'pending' ? 'outline' : 'destructive'}
+                              className="capitalize"
+                            >
+                              {event.approval_status}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Dialog
+                              open={isDetailOpen}
+                              onOpenChange={(open) => {
+                                if (open) {
                                   handleViewEvent(event);
                                   setDetailEvent(event);
-                                }}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="w-full max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>{detailData.title}</DialogTitle>
-                                <DialogDescription>
-                                  Invitations and attendance snapshot for this event.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <p className="text-muted-foreground">Date &amp; time</p>
-                                    <p className="font-medium">{formatDate(detailData.date)}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-muted-foreground">Venue</p>
-                                    <p className="font-medium">{detailData.location}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-muted-foreground">Coordinators</p>
-                                    <p className="font-medium">
-                                      {detailData.coordinator_names.length > 0 ? detailData.coordinator_names.join(', ') : 'Unassigned'}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-muted-foreground">Invitation mode</p>
-                                    <p className="font-medium">
-                                      {detailData.invitation_mode === 'invite-only' ? 'Invite-only' : 'Open to CS&E members'}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div>
-                                  <h3 className="text-sm font-semibold mb-2">Invited attendees</h3>
-                                  <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                    {invitationsForEvent.map((invitation) => (
-                                      <div key={invitation.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <div className="text-center sm:text-left">
-                                          <p className="font-medium">{invitation.invitee.name}</p>
-                                          <p className="text-xs text-muted-foreground">{invitation.invitee.email}</p>
-                                        </div>
-                                        <div className="text-center sm:text-right">
-                                          <Badge variant={invitation.status === 'accepted' ? 'secondary' : invitation.status === 'pending' ? 'outline' : 'destructive'} className="w-full justify-center sm:w-auto">
-                                            {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
-                                          </Badge>
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            Role: {invitation.role_at_event === 'coordinator' ? 'Coordinator' : 'Attendee'}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
-                                    {invitationsForEvent.length === 0 && (
-                                      <p className="text-sm text-muted-foreground">
-                                        No invitations have been sent yet. Coordinators can invite participants from their dashboard.
+                                } else {
+                                  setDetailEvent(null);
+                                  setEventInvitations([]);
+                                }
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    handleViewEvent(event);
+                                    setDetailEvent(event);
+                                  }}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="w-full max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle>{detailData.title}</DialogTitle>
+                                  <DialogDescription>
+                                    Invitations and attendance snapshot for this event.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <p className="text-muted-foreground">Date &amp; time</p>
+                                      <p className="font-medium">{formatDate(detailData.date)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground">Venue</p>
+                                      <p className="font-medium">{detailData.location}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground">Coordinators</p>
+                                      <p className="font-medium">
+                                        {detailData.coordinator_names.length > 0 ? detailData.coordinator_names.join(', ') : 'Unassigned'}
                                       </p>
-                                    )}
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground">Invitation mode</p>
+                                      <p className="font-medium">
+                                        {detailData.invitation_mode === 'invite-only' ? 'Invite-only' : 'Open to CS&E members'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <h3 className="text-sm font-semibold mb-2">Invited attendees</h3>
+                                    <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                      {invitationsForEvent.map((invitation) => (
+                                        <div key={invitation.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                                          <div className="text-center sm:text-left">
+                                            <p className="font-medium">{invitation.invitee.name}</p>
+                                            <p className="text-xs text-muted-foreground">{invitation.invitee.email}</p>
+                                          </div>
+                                          <div className="text-center sm:text-right">
+                                            <Badge variant={invitation.status === 'accepted' ? 'secondary' : invitation.status === 'pending' ? 'outline' : 'destructive'} className="w-full justify-center sm:w-auto">
+                                              {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
+                                            </Badge>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              Role: {invitation.role_at_event === 'coordinator' ? 'Coordinator' : 'Attendee'}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {invitationsForEvent.length === 0 && (
+                                        <p className="text-sm text-muted-foreground">
+                                          No invitations have been sent yet. Coordinators can invite participants from their dashboard.
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                          {/* Report generation disabled for deans; coordinators own this flow */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteEvent(event.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                              </DialogContent>
+                            </Dialog>
+                            {/* Report generation disabled for deans; coordinators own this flow */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteEvent(event.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })}

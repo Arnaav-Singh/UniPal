@@ -23,6 +23,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_SCHOOL, getAllSchools, getBranchesForSchool } from '@/lib/schools';
 
+const SDG_GOALS = [
+  'SDG1: No Poverty', 'SDG2: Zero Hunger', 'SDG3: Good Health and Well-being',
+  'SDG4: Quality Education', 'SDG5: Gender Equality', 'SDG6: Clean Water and Sanitation',
+  'SDG7: Affordable and Clean Energy', 'SDG8: Decent Work and Economic Growth',
+  'SDG9: Industry, Innovation and Infrastructure', 'SDG10: Reduced Inequalities',
+  'SDG11: Sustainable Cities and Communities', 'SDG12: Responsible Consumption and Production',
+  'SDG13: Climate Action', 'SDG14: Life Below Water', 'SDG15: Life on Land',
+  'SDG16: Peace, Justice and Strong Institutions', 'SDG17: Partnerships for the Goals'
+];
+
 type DirectoryRole = 'student' | 'coordinator';
 
 interface CoordinatorEventForm {
@@ -35,6 +45,8 @@ interface CoordinatorEventForm {
   department: string;
   invitation_mode: 'invite-only' | 'open';
   allow_self_check_in: boolean;
+  sdg: string[];
+  guest_speakers: string;
 }
 
 type ParticipantAccountType = 'participant' | 'student' | 'attendee';
@@ -100,6 +112,8 @@ export default function CoordinatorDashboard() {
     department: getBranchesForSchool(coordinatorSchool)[0] ?? '',
     invitation_mode: 'invite-only',
     allow_self_check_in: true,
+    sdg: [],
+    guest_speakers: '',
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [participantForm, setParticipantForm] = useState<ParticipantFormState>({
@@ -143,7 +157,7 @@ export default function CoordinatorDashboard() {
   // Fetch assigned events and high-level stats for the current coordinator.
   const loadData = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       const [eventsData, statsData] = await Promise.all([
         apiService.getEventsByCoordinator(user.id),
@@ -379,6 +393,16 @@ export default function CoordinatorDashboard() {
     });
   }, []);
 
+  const handleSDGToggle = useCallback((goal: string) => {
+    setCreateForm((prev) => {
+      const current = prev.sdg || [];
+      const updated = current.includes(goal)
+        ? current.filter(g => g !== goal)
+        : [...current, goal];
+      return { ...prev, sdg: updated };
+    });
+  }, []);
+
   // Mirror signup validations for the participant creation form.
   const handleParticipantFormChange = useCallback((field: keyof ParticipantFormState, value: string) => {
     setParticipantForm((prev) => {
@@ -428,6 +452,8 @@ export default function CoordinatorDashboard() {
         department: createForm.department,
         invitation_mode: createForm.invitation_mode,
         allow_self_check_in: createForm.allow_self_check_in,
+        sdg: createForm.sdg,
+        guest_speakers: createForm.guest_speakers.split('\n').filter(s => s.trim()),
       });
       toast({
         title: 'Event submitted for approval',
@@ -443,6 +469,8 @@ export default function CoordinatorDashboard() {
         location: '',
         invitation_mode: 'invite-only',
         allow_self_check_in: true,
+        sdg: [],
+        guest_speakers: '',
       }));
       loadData();
     } catch (error) {
@@ -955,15 +983,15 @@ export default function CoordinatorDashboard() {
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   className="w-full border-blue-300 text-blue-700 hover:bg-blue-100 sm:w-auto"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
                   Learn More
                 </Button>
-                <Button 
+                <Button
                   size="sm"
                   className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto"
                   onClick={() => setCreateDialogOpen(true)}
@@ -1030,6 +1058,8 @@ export default function CoordinatorDashboard() {
                 location: '',
                 invitation_mode: 'invite-only',
                 allow_self_check_in: true,
+                sdg: [],
+                guest_speakers: '',
               }));
             }
           }}
@@ -1129,6 +1159,42 @@ export default function CoordinatorDashboard() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label>Sustainable Development Goals (SDGs)</Label>
+                <ScrollArea className="h-32 rounded-md border p-2">
+                  <div className="space-y-2">
+                    {SDG_GOALS.map((goal) => (
+                      <div key={goal} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`sdg-${goal}`}
+                          checked={createForm.sdg?.includes(goal)}
+                          onChange={() => handleSDGToggle(goal)}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <label
+                          htmlFor={`sdg-${goal}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          {goal}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guestSpeakers">Guest Speakers</Label>
+                <Textarea
+                  id="guestSpeakers"
+                  value={createForm.guest_speakers}
+                  onChange={(e) => handleCreateFormChange('guest_speakers', e.target.value)}
+                  placeholder="Enter guest speakers (one per line)"
+                  rows={3}
+                />
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Invitation Mode</Label>
@@ -1178,7 +1244,7 @@ export default function CoordinatorDashboard() {
               <DialogTitle>QR Code Generator</DialogTitle>
             </DialogHeader>
             {selectedEvent && (
-              <QRCodeGenerator 
+              <QRCodeGenerator
                 eventId={selectedEvent.id}
                 eventTitle={selectedEvent.title}
               />
@@ -1193,7 +1259,7 @@ export default function CoordinatorDashboard() {
               <DialogTitle>Feedback QR Code Generator</DialogTitle>
             </DialogHeader>
             {selectedEvent && (
-              <FeedbackQRCodeGenerator 
+              <FeedbackQRCodeGenerator
                 eventId={selectedEvent.id}
                 eventTitle={selectedEvent.title}
               />
@@ -1208,7 +1274,7 @@ export default function CoordinatorDashboard() {
               <DialogTitle>Google Form QR Code Generator</DialogTitle>
             </DialogHeader>
             {selectedEvent && (
-              <GoogleFormQRGenerator 
+              <GoogleFormQRGenerator
                 eventId={selectedEvent.id}
                 eventTitle={selectedEvent.title}
               />
@@ -1475,17 +1541,17 @@ export default function CoordinatorDashboard() {
                 Send invites to coordinators or attendees for this event.
               </p>
             </DialogHeader>
-                    {inviteEvent ? (
-                      <div className="space-y-5">
-                        <div className="rounded-lg border bg-muted/50 p-4">
-                          <p className="font-semibold">{inviteEvent.title}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatLocalDateTime(inviteEvent.date, (inviteEvent as { time?: string }).time)} • {inviteEvent.location}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Approval status: <span className="font-medium capitalize">{inviteEvent.approval_status}</span>
-                          </p>
-                        </div>
+            {inviteEvent ? (
+              <div className="space-y-5">
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <p className="font-semibold">{inviteEvent.title}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatLocalDateTime(inviteEvent.date, (inviteEvent as { time?: string }).time)} • {inviteEvent.location}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Approval status: <span className="font-medium capitalize">{inviteEvent.approval_status}</span>
+                  </p>
+                </div>
 
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold">Invite Type</Label>

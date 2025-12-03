@@ -2,7 +2,7 @@
 import express from 'express';
 const router = express.Router();
 import { getAllFaculty, inviteFaculty, deleteFaculty } from '../controllers/facultyController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 
 const deanRoles = ['dean', 'superadmin'];

@@ -2,7 +2,7 @@
 import express from 'express';
 const router = express.Router();
 import { createEvent, updateEvent, deleteEvent, getDirectory, createParticipantAccount } from '../controllers/coordinatorController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 
 router.post('/events', authMiddleware, roleMiddleware(['coordinator']), createEvent);

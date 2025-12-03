@@ -19,6 +19,7 @@ import superadminRoutes from "./routes/superadminRoutes.js";
 import facultyRoutes from './routes/facultyRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
 
 dotenv.config();
 
@@ -116,8 +117,8 @@ const authLimiter = rateLimit({
 
 // Health check endpoint for Azure monitoring
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy', 
+  res.status(200).json({
+    status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
@@ -140,6 +141,7 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/notification', notificationRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/google', googleAuthRoutes);
+app.use('/api/reports', reportRoutes);
 
 // SPA or 404 fallback LAST
 // ...existing code...

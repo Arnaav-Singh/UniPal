@@ -2,7 +2,7 @@
 import express from 'express';
 const router = express.Router();
 import { registerForEvent, getMyEvents, markAttendance, listAttendance } from '../controllers/studentController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 
 const deanRoles = ['dean', 'superadmin']; // reused for privileged attendance lookups

@@ -4,7 +4,7 @@ const router = express.Router();
 import { register, login, getProfile } from '../controllers/authController.js';
 import { body } from 'express-validator';
 import { validate } from '../middleware/validateRequest.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 
 router.post('/register',
   body('name').trim().notEmpty().withMessage('Name is required'),

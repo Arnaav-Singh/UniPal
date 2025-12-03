@@ -2,7 +2,7 @@
 import express from 'express';
 import { getAllUsers, deleteUser, getAllEvents, deleteEvent, getAllFeedback, createSuperAdmin, bulkCreateCoordinators, assignEventToCoordinator } from '../controllers/superadminController.js';
 import { getSuperadminOverview } from '../controllers/eventController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 
 const router = express.Router();

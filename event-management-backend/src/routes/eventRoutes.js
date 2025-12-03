@@ -24,7 +24,7 @@ import {
   endEvent,
   generateEventReportPdf,
 } from '../controllers/eventController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { protect as authMiddleware } from '../middleware/authMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 import { param } from 'express-validator';
 import { validate } from '../middleware/validateRequest.js';
