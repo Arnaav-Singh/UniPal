@@ -6,7 +6,7 @@ import { QRCodeGenerator } from '@/components/QRCodeGenerator';
 import { FeedbackQRCodeGenerator } from '@/components/FeedbackQRCodeGenerator';
 import { GoogleFormQRGenerator } from '@/components/GoogleFormQRGenerator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -1067,9 +1067,9 @@ export default function CoordinatorDashboard() {
           <DialogContent className="w-full max-w-3xl">
             <DialogHeader>
               <DialogTitle>Create a new event</DialogTitle>
-              <p className="text-sm text-muted-foreground">
+              <DialogDescription className="text-sm text-muted-foreground">
                 Draft your event details and send them to the dean for approval.
-              </p>
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
@@ -1242,6 +1242,9 @@ export default function CoordinatorDashboard() {
           <DialogContent className="w-full max-w-md sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>QR Code Generator</DialogTitle>
+              <DialogDescription>
+                Generate a QR code for event check-in.
+              </DialogDescription>
             </DialogHeader>
             {selectedEvent && (
               <QRCodeGenerator
@@ -1257,6 +1260,9 @@ export default function CoordinatorDashboard() {
           <DialogContent className="w-full max-w-md sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Feedback QR Code Generator</DialogTitle>
+              <DialogDescription>
+                Generate a QR code for collecting event feedback.
+              </DialogDescription>
             </DialogHeader>
             {selectedEvent && (
               <FeedbackQRCodeGenerator
@@ -1272,6 +1278,9 @@ export default function CoordinatorDashboard() {
           <DialogContent className="w-full max-w-2xl">
             <DialogHeader>
               <DialogTitle>Google Form QR Code Generator</DialogTitle>
+              <DialogDescription>
+                Generate a QR code for a Google Form.
+              </DialogDescription>
             </DialogHeader>
             {selectedEvent && (
               <GoogleFormQRGenerator
@@ -1302,9 +1311,9 @@ export default function CoordinatorDashboard() {
           <DialogContent className="w-full max-w-5xl">
             <DialogHeader>
               <DialogTitle>Event Tools</DialogTitle>
-              <p className="text-sm text-muted-foreground">
+              <DialogDescription className="text-sm text-muted-foreground">
                 Attendance, QR tools, and feedback insights are read-only for coordinators.
-              </p>
+              </DialogDescription>
             </DialogHeader>
             {selectedEvent ? (
               <div className="space-y-4">
@@ -1537,9 +1546,9 @@ export default function CoordinatorDashboard() {
           <DialogContent className="w-full max-w-3xl">
             <DialogHeader>
               <DialogTitle>Invite Participants</DialogTitle>
-              <p className="text-sm text-muted-foreground">
+              <DialogDescription className="text-sm text-muted-foreground">
                 Send invites to coordinators or attendees for this event.
-              </p>
+              </DialogDescription>
             </DialogHeader>
             {inviteEvent ? (
               <div className="space-y-5">
