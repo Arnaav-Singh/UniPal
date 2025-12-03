@@ -114,6 +114,15 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Health check endpoint for Azure monitoring
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // Routes
 app.use("/api/auth", (req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
