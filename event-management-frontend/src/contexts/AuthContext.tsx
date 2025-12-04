@@ -7,7 +7,7 @@ interface RegisterPayload {
   name: string;
   email: string;
   password: string;
-  role: 'dean' | 'admin' | 'coordinator' | 'student';
+  role: 'dean' | 'admin' | 'coordinator' | 'student' | 'superadmin';
   school?: string;
   department?: string;
   designation?: string;

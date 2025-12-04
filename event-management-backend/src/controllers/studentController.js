@@ -79,6 +79,12 @@ export const markAttendance = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    // Prevent attendance if event is completed
+    if (event.status === 'completed') {
+      return res.status(400).json({ message: 'Attendance is closed for this event' });
+    }
+
     const userId = req.user._id.toString();
     if (!event.attendees.map(a => a.toString()).includes(userId)) {
       return res.status(400).json({ message: 'Not registered for this event' });

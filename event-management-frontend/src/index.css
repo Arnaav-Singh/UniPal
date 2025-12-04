@@ -49,15 +49,15 @@ All colors MUST be HSL.
     --university-light: 30 52% 94%;
     --university-gray: 216 14% 42%;
 
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(350 69% 45%) 0%, hsl(219 57% 24%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(38 92% 62%) 0%, hsl(350 69% 45%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(32 58% 98%) 0%, hsl(32 52% 94%) 100%);
+    /* Gradients - More vibrant and smooth */
+    --gradient-primary: linear-gradient(135deg, hsl(350 80% 45%) 0%, hsl(219 65% 24%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(38 95% 62%) 0%, hsl(350 75% 45%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(32 60% 99%) 0%, hsl(32 50% 95%) 100%);
 
-    /* Shadows */
-    --shadow-card: 0 22px 48px -30px hsl(219 57% 24% / 0.38);
-    --shadow-button: 0 15px 35px -20px hsl(350 69% 45% / 0.45);
-    --shadow-glow: 0 0 55px hsl(38 92% 62% / 0.32);
+    /* Shadows - Softer and more diffuse */
+    --shadow-card: 0 10px 30px -10px hsl(219 57% 24% / 0.15);
+    --shadow-button: 0 10px 20px -10px hsl(350 69% 45% / 0.3);
+    --shadow-glow: 0 0 40px hsl(38 92% 62% / 0.2);
 
     --radius: 0.5rem;
 
@@ -146,9 +146,9 @@ All colors MUST be HSL.
     z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(60% 70% at 15% 15%, hsl(350 69% 52% / 0.16), transparent 60%),
-      radial-gradient(45% 60% at 85% 20%, hsl(38 92% 66% / 0.22), transparent 65%),
-      radial-gradient(65% 70% at 50% 85%, hsl(219 57% 26% / 0.18), transparent 70%);
-    filter: saturate(110%);
+      radial-gradient(circle at 15% 15%, hsl(350 69% 52% / 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 85% 20%, hsl(38 92% 66% / 0.1) 0%, transparent 50%),
+      radial-gradient(circle at 50% 85%, hsl(219 57% 26% / 0.08) 0%, transparent 50%);
+    filter: blur(60px);
   }
 }

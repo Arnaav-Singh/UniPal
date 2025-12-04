@@ -39,6 +39,8 @@ interface CoordinatorEventForm {
   title: string;
   description: string;
   date: string;
+  startDate: string;
+  endDate: string;
   time: string;
   location: string;
   school: string;
@@ -47,6 +49,7 @@ interface CoordinatorEventForm {
   allow_self_check_in: boolean;
   sdg: string[];
   guest_speakers: string;
+  category: string;
 }
 
 type ParticipantAccountType = 'participant' | 'student' | 'attendee';
@@ -106,6 +109,8 @@ export default function CoordinatorDashboard() {
     title: '',
     description: '',
     date: '',
+    startDate: '',
+    endDate: '',
     time: '',
     location: '',
     school: coordinatorSchool,
@@ -114,6 +119,7 @@ export default function CoordinatorDashboard() {
     allow_self_check_in: true,
     sdg: [],
     guest_speakers: '',
+    category: 'other',
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [participantForm, setParticipantForm] = useState<ParticipantFormState>({
@@ -446,6 +452,8 @@ export default function CoordinatorDashboard() {
         title: createForm.title.trim(),
         description: createForm.description.trim(),
         date: createForm.date,
+        startDate: createForm.startDate,
+        endDate: createForm.endDate,
         time: createForm.time,
         location: createForm.location.trim(),
         school: createForm.school,
@@ -454,6 +462,7 @@ export default function CoordinatorDashboard() {
         allow_self_check_in: createForm.allow_self_check_in,
         sdg: createForm.sdg,
         guest_speakers: createForm.guest_speakers.split('\n').filter(s => s.trim()),
+        category: createForm.category,
       });
       toast({
         title: 'Event submitted for approval',
@@ -465,12 +474,15 @@ export default function CoordinatorDashboard() {
         title: '',
         description: '',
         date: '',
+        startDate: '',
+        endDate: '',
         time: '',
         location: '',
         invitation_mode: 'invite-only',
         allow_self_check_in: true,
         sdg: [],
         guest_speakers: '',
+        category: 'other',
       }));
       loadData();
     } catch (error) {
@@ -806,166 +818,7 @@ export default function CoordinatorDashboard() {
           </Card>
         )}
 
-        {activeEvents.length > 0 ? (
-          <Card className="border-primary/30 shadow-card">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-2 text-lg">
-                Create New Participant Account
-                <Badge variant="secondary" className="uppercase">
-                  Live events only
-                </Badge>
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Mirror the signup form to quickly onboard attendees while an event is active.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Attach to Event</Label>
-                  <Select value={selectedActiveEventId} onValueChange={setSelectedActiveEventId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an active event" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeEvents.map((event) => (
-                        <SelectItem key={event.id} value={event.id}>
-                          {event.title} — {formatLocalDateTime(event.date, (event as { time?: string }).time)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="participantName">Full Name</Label>
-                  <Input
-                    id="participantName"
-                    value={participantForm.name}
-                    onChange={(e) => handleParticipantFormChange('name', e.target.value)}
-                    placeholder="Enter full name"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="participantEmail">Email Address</Label>
-                  <Input
-                    id="participantEmail"
-                    type="email"
-                    value={participantForm.email}
-                    onChange={(e) => handleParticipantFormChange('email', e.target.value)}
-                    placeholder="name@example.com"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="registrationId">Registration ID</Label>
-                  <Input
-                    id="registrationId"
-                    value={participantForm.registrationId}
-                    onChange={(e) => handleParticipantFormChange('registrationId', e.target.value)}
-                    placeholder="Unique registration ID"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Account Type</Label>
-                  <Select value={participantForm.accountType} onValueChange={(value) => handleParticipantFormChange('accountType', value)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="participant">Participant</SelectItem>
-                      <SelectItem value="student">Student</SelectItem>
-                      <SelectItem value="attendee">Attendee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="participantPhone">Phone Number (optional)</Label>
-                  <Input
-                    id="participantPhone"
-                    value={participantForm.phone}
-                    onChange={(e) => handleParticipantFormChange('phone', e.target.value)}
-                    placeholder="+91 98765 43210"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="participantPassword">Password</Label>
-                  <Input
-                    id="participantPassword"
-                    type="password"
-                    value={participantForm.password}
-                    onChange={(e) => handleParticipantFormChange('password', e.target.value)}
-                    placeholder="Create a password"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="participantConfirmPassword">Confirm Password</Label>
-                  <Input
-                    id="participantConfirmPassword"
-                    type="password"
-                    value={participantForm.confirmPassword}
-                    onChange={(e) => handleParticipantFormChange('confirmPassword', e.target.value)}
-                    placeholder="Confirm password"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>School</Label>
-                  <Select value={participantForm.school} onValueChange={(value) => handleParticipantFormChange('school', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select school" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {schoolOptions.map((school) => (
-                        <SelectItem key={school} value={school}>
-                          {school}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Branch / Department</Label>
-                  <Select value={participantForm.department} onValueChange={(value) => handleParticipantFormChange('department', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {participantBranchOptions.map((branch) => (
-                        <SelectItem key={branch} value={branch}>
-                          {branch}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">
-                  New users are added to the event roster immediately so they can scan the attendance QR.
-                </p>
-                <Button onClick={handleCreateParticipantAccount} disabled={participantSubmitting} className="gap-2 w-full sm:w-auto">
-                  {participantSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Create Participant
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="border-dashed border-muted-foreground/50 bg-muted/40">
-            <CardContent className="p-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="font-semibold">Participant onboarding is locked</p>
-                <p className="text-sm text-muted-foreground">
-                  This panel appears when at least one approved event is ongoing.
-                </p>
-              </div>
-              <Badge variant="outline">No active events</Badge>
-            </CardContent>
-          </Card>
-        )}
+        {/* Create New Participant Account Section Removed */}
 
         {/* Google Form CTA Section */}
         <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
@@ -983,14 +836,7 @@ export default function CoordinatorDashboard() {
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-blue-300 text-blue-700 hover:bg-blue-100 sm:w-auto"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Learn More
-                </Button>
+
                 <Button
                   size="sm"
                   className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto"
@@ -1064,7 +910,7 @@ export default function CoordinatorDashboard() {
             }
           }}
         >
-          <DialogContent className="w-full max-w-3xl">
+          <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create a new event</DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground">
@@ -1093,26 +939,76 @@ export default function CoordinatorDashboard() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eventDate">Date</Label>
-                  <Input
-                    id="eventDate"
-                    type="date"
-                    value={createForm.date}
-                    onChange={(e) => handleCreateFormChange('date', e.target.value)}
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="eventType">Event Type</Label>
+                    <Select
+                      value={createForm.category}
+                      onValueChange={(value) => handleCreateFormChange('category', value)}
+                    >
+                      <SelectTrigger id="eventType">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="seminar">Seminar</SelectItem>
+                        <SelectItem value="workshop">Workshop</SelectItem>
+                        <SelectItem value="competition">Competition</SelectItem>
+                        <SelectItem value="guest-lecture">Guest Lecture</SelectItem>
+                        <SelectItem value="hackathon">Hackathon</SelectItem>
+                        <SelectItem value="orientation">Orientation</SelectItem>
+                        <SelectItem value="cultural">Cultural</SelectItem>
+                        <SelectItem value="sports">Sports</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="eventTime">Time</Label>
+                    <Input
+                      id="eventTime"
+                      type="time"
+                      value={createForm.time}
+                      onChange={(e) => handleCreateFormChange('time', e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eventTime">Time</Label>
-                  <Input
-                    id="eventTime"
-                    type="time"
-                    value={createForm.time}
-                    onChange={(e) => handleCreateFormChange('time', e.target.value)}
-                    required
-                  />
-                </div>
+
+                {['hackathon', 'competition', 'cultural', 'sports'].includes(createForm.category) ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="startDate">Start Date</Label>
+                      <Input
+                        id="startDate"
+                        type="date"
+                        value={createForm.startDate}
+                        onChange={(e) => handleCreateFormChange('startDate', e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="endDate">End Date</Label>
+                      <Input
+                        id="endDate"
+                        type="date"
+                        value={createForm.endDate}
+                        onChange={(e) => handleCreateFormChange('endDate', e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="eventDate">Date</Label>
+                    <Input
+                      id="eventDate"
+                      type="date"
+                      value={createForm.date}
+                      onChange={(e) => handleCreateFormChange('date', e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1543,7 +1439,7 @@ export default function CoordinatorDashboard() {
             }
           }}
         >
-          <DialogContent className="w-full max-w-3xl">
+          <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Invite Participants</DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground">

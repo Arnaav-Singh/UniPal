@@ -201,6 +201,8 @@ export const createEvent = async (req, res) => {
     const {
       name,
       date,
+      startDate,
+      endDate,
       location,
       description,
       time,
@@ -253,6 +255,8 @@ export const createEvent = async (req, res) => {
     const event = await Event.create({
       name,
       date,
+      startDate,
+      endDate,
       location,
       description,
       time,
@@ -325,6 +329,8 @@ export const updateEvent = async (req, res) => {
     const editableFields = [
       'name',
       'date',
+      'startDate',
+      'endDate',
       'location',
       'description',
       'time',

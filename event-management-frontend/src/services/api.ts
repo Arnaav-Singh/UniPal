@@ -42,7 +42,7 @@ function authHeaders(): Record<string, string> {
 // Wrapper around fetch that centralises error handling and JSON parsing.
 async function http<T>(path: string, options: RequestInit = {}): Promise<T> {
 	const headers: Record<string, string> = {
-		...options.headers,
+		...(options.headers as Record<string, string>),
 	};
 	const hasBody = options.body !== undefined && options.body !== null;
 	if (hasBody && !(options.body instanceof FormData)) {
@@ -81,7 +81,9 @@ async function http<T>(path: string, options: RequestInit = {}): Promise<T> {
 function mapRoleFromBackend(role: string): User['role'] {
 	switch (role) {
 		case 'dean':
+			return 'dean';
 		case 'superadmin':
+			return 'superadmin';
 		case 'admin':
 			return 'dean';
 		case 'coordinator':
@@ -101,6 +103,8 @@ function mapRoleToBackend(role: User['role']): string {
 			return 'student';
 		case 'dean':
 			return 'dean';
+		case 'superadmin':
+			return 'superadmin';
 		default:
 			return role;
 	}
@@ -366,7 +370,7 @@ class APIService {
 		return { user, token };
 	}
 
-	async register(userData: { name: string; email: string; password: string; role: 'dean' | 'admin' | 'coordinator' | 'student'; school?: string; department?: string; designation?: string; }): Promise<AuthUser> {
+	async register(userData: { name: string; email: string; password: string; role: 'dean' | 'admin' | 'coordinator' | 'student' | 'superadmin'; school?: string; department?: string; designation?: string; }): Promise<AuthUser> {
 		const payload = {
 			name: userData.name,
 			email: userData.email,
@@ -385,7 +389,7 @@ class APIService {
 		return { user, token };
 	}
 
-	async provisionUser(userData: { name: string; email: string; password: string; role: 'dean' | 'admin' | 'coordinator' | 'student'; school?: string; department?: string; designation?: string; }): Promise<User> {
+	async provisionUser(userData: { name: string; email: string; password: string; role: 'dean' | 'admin' | 'coordinator' | 'student' | 'superadmin'; school?: string; department?: string; designation?: string; }): Promise<User> {
 		const payload = {
 			name: userData.name,
 			email: userData.email,
@@ -511,6 +515,8 @@ class APIService {
 		title: string;
 		description: string;
 		date: string;
+		startDate?: string;
+		endDate?: string;
 		location: string;
 		school?: string;
 		department?: string;
@@ -535,6 +541,8 @@ class APIService {
 			name: eventData.title,
 			description: eventData.description,
 			date: eventData.date,
+			startDate: eventData.startDate,
+			endDate: eventData.endDate,
 			location: eventData.location,
 			school: eventData.school,
 			department: eventData.department,
@@ -567,6 +575,8 @@ class APIService {
 		title: string;
 		description?: string;
 		date: string;
+		startDate?: string;
+		endDate?: string;
 		time?: string;
 		location: string;
 		school?: string;
@@ -589,6 +599,8 @@ class APIService {
 			name: eventData.title,
 			description: eventData.description,
 			date: eventData.date,
+			startDate: eventData.startDate,
+			endDate: eventData.endDate,
 			time: eventData.time,
 			location: eventData.location,
 			school: eventData.school,

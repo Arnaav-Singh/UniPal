@@ -17,7 +17,7 @@ interface EventCardProps {
 
 export function EventCard({ event, onViewDetails, onGenerateQR, onGenerateGoogleFormQR, onViewAttendance, onManageInvites }: EventCardProps) {
   const { user } = useAuth();
-  
+
   // Present event dates in a readable multi-part format, including the stored time when available.
   const formatDate = (dateString: string, time?: string) => {
     const dateTimeString = time ? `${dateString}T${time}` : `${dateString}T00:00`;
@@ -35,7 +35,7 @@ export function EventCard({ event, onViewDetails, onGenerateQR, onGenerateGoogle
   const awaitingApproval = event.approval_status !== 'approved';
 
   return (
-    <Card className="bg-gradient-card shadow-card hover:shadow-glow transition-all duration-300 border-0">
+    <Card className="group bg-gradient-card shadow-card hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-border/50">
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <CardTitle className="text-lg font-semibold text-foreground line-clamp-2">
@@ -51,12 +51,12 @@ export function EventCard({ event, onViewDetails, onGenerateQR, onGenerateGoogle
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         <p className="text-muted-foreground text-sm line-clamp-3">
           {event.description}
         </p>
-        
+
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm">
             <Calendar className="w-4 h-4 text-accent" />
@@ -76,22 +76,22 @@ export function EventCard({ event, onViewDetails, onGenerateQR, onGenerateGoogle
             ))}
           </div>
         </div>
-        
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+
+        <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onViewDetails}
-            className="flex-1 min-w-24"
+            className="col-span-2 sm:col-span-1 sm:flex-1 min-w-24"
           >
             View Details
           </Button>
-          
+
           {user?.role === 'coordinator' && (
             <>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={onManageInvites}
                 className="gap-1"
                 disabled={awaitingApproval}
@@ -99,9 +99,9 @@ export function EventCard({ event, onViewDetails, onGenerateQR, onGenerateGoogle
                 <UserPlus className="w-4 h-4" />
                 Invite
               </Button>
-              <Button 
-                variant="secondary" 
-                size="sm" 
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={onGenerateQR}
                 className="gap-1"
                 disabled={awaitingApproval}
@@ -109,18 +109,18 @@ export function EventCard({ event, onViewDetails, onGenerateQR, onGenerateGoogle
                 <QrCode className="w-4 h-4" />
                 QR Code
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={onGenerateGoogleFormQR}
                 className="gap-1"
               >
                 <FileText className="w-4 h-4" />
                 Form QR
               </Button>
-              <Button 
-                variant="secondary" 
-                size="sm" 
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={onViewAttendance}
                 className="gap-1"
                 disabled={awaitingApproval}

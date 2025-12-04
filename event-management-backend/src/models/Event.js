@@ -6,6 +6,8 @@ const eventSchema = new mongoose.Schema({
   eventID: { type: String, unique: true, default: function () { return this._id.toString(); } },
   name: { type: String, required: true },
   date: { type: String, required: true },
+  startDate: { type: Date },
+  endDate: { type: Date },
   location: { type: String, required: true },
   description: { type: String },
   time: { type: String },

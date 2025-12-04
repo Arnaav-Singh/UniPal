@@ -166,6 +166,7 @@ export const exportEvents = async (req, res) => {
             { header: 'Date', key: 'date', width: 15 },
             { header: 'Time', key: 'time', width: 15 },
             { header: 'Coordinator Name', key: 'coordinator', width: 30 },
+            { header: 'Participant Count', key: 'participantCount', width: 20 },
             { header: 'SDGs', key: 'sdg', width: 40 },
         ];
 
@@ -178,6 +179,7 @@ export const exportEvents = async (req, res) => {
                 date: formatDate(event.date),
                 time: event.time || 'N/A',
                 coordinator: coordinatorNames,
+                participantCount: (event.attendance?.length || 0) + (event.attendees?.length || 0), // Sum of marked attendance and registered attendees
                 sdg: event.sdg?.join(', ') || 'None',
             });
         });

@@ -1,5 +1,6 @@
+
 // Student dashboard surfacing invites, attendance history, and QR check-in.
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { EventCard } from '@/components/EventCard';
 import { QRScanner } from '@/components/QRScanner';
@@ -7,12 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { CalendarDays, CheckCircle, QrCode, Star, Loader2 } from 'lucide-react';
+import {
+  CalendarDays, CheckCircle, QrCode, Search,
+  Download,
+  CalendarPlus,
+  Filter, Star, Loader2
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Event, EventInvitation } from '@/types';
 import { apiService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -25,6 +33,43 @@ export default function StudentDashboard() {
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackComments, setFeedbackComments] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  // Filter events based on search and category
+  const filteredEvents = useMemo(() => {
+    return upcomingEvents.filter(event => {
+      const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = categoryFilter === 'all' || event.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [upcomingEvents, searchTerm, categoryFilter]);
+
+  const handleDownloadCalendar = (event: Event) => {
+    const startTime = event.date.replace(/-|:|\.\d\d\d/g, "");
+    // Create simple ICS content
+    const icsContent = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      `DTSTART:${startTime} `,
+      `SUMMARY:${event.title} `,
+      `DESCRIPTION:${event.description} `,
+      `LOCATION:${event.location} `,
+      "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\n");
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   const dismissedFeedbackRef = useRef<Set<string>>(new Set());
   const feedbackClosedBySubmitRef = useRef(false);
   const [stats, setStats] = useState({
@@ -37,7 +82,7 @@ export default function StudentDashboard() {
   // Pull upcoming events, tracked attendance, and pending invites.
   const loadData = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       const [allEvents, attendanceData, statsData, invitationData] = await Promise.all([
         apiService.getEvents(),
@@ -48,7 +93,7 @@ export default function StudentDashboard() {
 
       const now = new Date();
       const upcoming = allEvents.filter(event => new Date(event.date) > now && event.approval_status === 'approved');
-      
+
       setUpcomingEvents(upcoming);
       setAttendedEvents(attendanceData.events);
       setStats(statsData);
@@ -72,37 +117,37 @@ export default function StudentDashboard() {
     return () => clearInterval(interval);
   }, [user, loadData]);
 
-useEffect(() => {
-  const pendingIds = new Set(
-    attendedEvents
-      .filter(
-        (event) =>
-          event.status === 'completed' &&
-          event.feedback_open &&
-          !event.feedback_submitted
-      )
-      .map((event) => event.id)
-  );
-  const toRemove: string[] = [];
-  dismissedFeedbackRef.current.forEach((id) => {
-    if (!pendingIds.has(id)) {
-      toRemove.push(id);
+  useEffect(() => {
+    const pendingIds = new Set(
+      attendedEvents
+        .filter(
+          (event) =>
+            event.status === 'completed' &&
+            event.feedback_open &&
+            !event.feedback_submitted
+        )
+        .map((event) => event.id)
+    );
+    const toRemove: string[] = [];
+    dismissedFeedbackRef.current.forEach((id) => {
+      if (!pendingIds.has(id)) {
+        toRemove.push(id);
+      }
+    });
+    toRemove.forEach((id) => dismissedFeedbackRef.current.delete(id));
+    if (feedbackDialogOpen) return;
+    const next = attendedEvents.find(
+      (event) =>
+        event.status === 'completed' &&
+        event.feedback_open &&
+        !event.feedback_submitted &&
+        !dismissedFeedbackRef.current.has(event.id)
+    );
+    if (next) {
+      setPendingFeedbackEvent(next);
+      setFeedbackDialogOpen(true);
     }
-  });
-  toRemove.forEach((id) => dismissedFeedbackRef.current.delete(id));
-  if (feedbackDialogOpen) return;
-  const next = attendedEvents.find(
-    (event) =>
-      event.status === 'completed' &&
-      event.feedback_open &&
-      !event.feedback_submitted &&
-      !dismissedFeedbackRef.current.has(event.id)
-  );
-  if (next) {
-    setPendingFeedbackEvent(next);
-    setFeedbackDialogOpen(true);
-  }
-}, [attendedEvents, feedbackDialogOpen]);
+  }, [attendedEvents, feedbackDialogOpen]);
 
   // Mark attendance after a successful scan and refresh the dashboard.
   const handleQRScanSuccess = async ({ eventId, code }: { eventId: string; code?: string }) => {
@@ -115,7 +160,7 @@ useEffect(() => {
       });
       return;
     }
-    
+
     setShowQRScanner(false);
     try {
       await apiService.markAttendance(eventId, {
@@ -163,18 +208,18 @@ useEffect(() => {
     { label: 'Feedback Given', value: stats.feedbackGiven, icon: Star, color: 'bg-accent' }
   ];
 
-const handleFeedbackDialogChange = (open: boolean) => {
-  setFeedbackDialogOpen(open);
-  if (!open) {
-    if (!feedbackClosedBySubmitRef.current && pendingFeedbackEvent) {
-      dismissedFeedbackRef.current.add(pendingFeedbackEvent.id);
+  const handleFeedbackDialogChange = (open: boolean) => {
+    setFeedbackDialogOpen(open);
+    if (!open) {
+      if (!feedbackClosedBySubmitRef.current && pendingFeedbackEvent) {
+        dismissedFeedbackRef.current.add(pendingFeedbackEvent.id);
+      }
+      setPendingFeedbackEvent(null);
+      setFeedbackComments('');
+      setFeedbackRating(5);
+      feedbackClosedBySubmitRef.current = false;
     }
-    setPendingFeedbackEvent(null);
-    setFeedbackComments('');
-    setFeedbackRating(5);
-    feedbackClosedBySubmitRef.current = false;
-  }
-};
+  };
 
   const handleSubmitFeedback = async () => {
     if (!pendingFeedbackEvent) return;
@@ -207,216 +252,262 @@ const handleFeedbackDialogChange = (open: boolean) => {
     }
   };
 
-return (
-  <>
-    <Layout title="Student Dashboard">
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Student Dashboard</h1>
-            <p className="text-muted-foreground">Discover and attend college events</p>
+  return (
+    <>
+      <Layout title="Student Dashboard">
+        <div className="space-y-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Student Dashboard</h1>
+              <p className="text-muted-foreground">Discover and attend college events</p>
+            </div>
+            <Dialog open={showQRScanner} onOpenChange={setShowQRScanner}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <QrCode className="w-4 h-4" />
+                  Scan QR Code
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-[95vw] max-w-md sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Mark Attendance</DialogTitle>
+                </DialogHeader>
+                <QRScanner onScanSuccess={handleQRScanSuccess} />
+              </DialogContent>
+            </Dialog>
           </div>
-          <Dialog open={showQRScanner} onOpenChange={setShowQRScanner}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <QrCode className="w-4 h-4" />
-                Scan QR Code
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="w-full max-w-md sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Mark Attendance</DialogTitle>
-              </DialogHeader>
-              <QRScanner onScanSuccess={handleQRScanSuccess} />
-            </DialogContent>
-          </Dialog>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {statsDisplay.map((stat) => (
-            <Card key={stat.label} className="bg-gradient-card shadow-card border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                    <stat.icon className="w-6 h-6 text-white" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {statsDisplay.map((stat) => (
+              <Card key={stat.label} className="bg-gradient-card shadow-card border-0">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className={`w - 12 h - 12 rounded - lg ${stat.color} flex items - center justify - center`}>
+                      <stat.icon className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold">{stat.value}</p>
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  </div>
-                </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {invitations.length > 0 && (
+            <Card className="bg-gradient-card shadow-card border-0">
+              <CardHeader>
+                <CardTitle>Pending Invitations</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {invitations.map((invitation) => {
+                  const matchingEvent = [...upcomingEvents, ...attendedEvents].find((event) => event.id === invitation.event_id);
+                  return (
+                    <div
+                      key={invitation.id}
+                      className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border rounded-lg p-3"
+                    >
+                      <div>
+                        <p className="font-medium">{matchingEvent?.title || 'Event invitation'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Invited as {invitation.role_at_event === 'coordinator' ? 'Coordinator' : 'Attendee'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {matchingEvent ? new Date(matchingEvent.date).toLocaleString() : `Event ID: ${invitation.event_id} `}
+                        </p>
+                        {matchingEvent && (
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                            <Badge variant="outline" className="capitalize">{matchingEvent.approval_status}</Badge>
+                            <Badge variant="outline" className="capitalize">{matchingEvent.delivery_mode.replace('-', ' ')}</Badge>
+                          </div>
+                        )}
+                        {invitation.message && (
+                          <p className="text-xs mt-1">“{invitation.message}”</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleInvitationResponse(invitation, 'declined')}
+                        >
+                          Decline
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleInvitationResponse(invitation, 'accepted')}
+                        >
+                          Accept
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
-          ))}
-        </div>
+          )}
 
-        {invitations.length > 0 && (
           <Card className="bg-gradient-card shadow-card border-0">
             <CardHeader>
-              <CardTitle>Pending Invitations</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {invitations.map((invitation) => {
-                const matchingEvent = [...upcomingEvents, ...attendedEvents].find((event) => event.id === invitation.event_id);
-                return (
-                <div
-                  key={invitation.id}
-                  className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 border rounded-lg p-3"
-                >
-                  <div>
-                    <p className="font-medium">{matchingEvent?.title || 'Event invitation'}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Invited as {invitation.role_at_event === 'coordinator' ? 'Coordinator' : 'Attendee'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {matchingEvent ? new Date(matchingEvent.date).toLocaleString() : `Event ID: ${invitation.event_id}`}
-                    </p>
-                    {matchingEvent && (
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                        <Badge variant="outline" className="capitalize">{matchingEvent.approval_status}</Badge>
-                        <Badge variant="outline" className="capitalize">{matchingEvent.delivery_mode.replace('-', ' ')}</Badge>
-                      </div>
-                    )}
-                    {invitation.message && (
-                      <p className="text-xs mt-1">“{invitation.message}”</p>
-                    )}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle>Upcoming Events</CardTitle>
+                <div className="flex gap-2">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search events..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-9"
+                    />
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleInvitationResponse(invitation, 'declined')}
-                    >
-                      Decline
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleInvitationResponse(invitation, 'accepted')}
-                    >
-                      Accept
-                    </Button>
-                  </div>
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-[140px]">
+                      <Filter className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      <SelectItem value="seminar">Seminar</SelectItem>
+                      <SelectItem value="workshop">Workshop</SelectItem>
+                      <SelectItem value="hackathon">Hackathon</SelectItem>
+                      <SelectItem value="cultural">Cultural</SelectItem>
+                      <SelectItem value="sports">Sports</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              );
-              })}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredEvents.length === 0 ? (
+                  <p className="col-span-2 text-center text-muted-foreground py-8">
+                    No events found matching your criteria.
+                  </p>
+                ) : (
+                  filteredEvents.map((event) => (
+                    <div key={event.id} className="relative group">
+                      <EventCard
+                        event={event}
+                        onViewDetails={() => console.log('View details:', event.id)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur-sm hover:bg-background"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadCalendar(event);
+                        }}
+                        title="Add to Calendar"
+                      >
+                        <CalendarPlus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
-        )}
 
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
-            <CardTitle>Upcoming Events</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {upcomingEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onViewDetails={() => console.log('View details:', event.id)}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Attended Events
-              <Badge variant="secondary">{attendedEvents.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {attendedEvents.map((event) => (
-                <div key={event.id} className="relative">
-                  <EventCard
-                    event={event}
-                    onViewDetails={() => console.log('View details:', event.id)}
-                  />
-                  <div className="absolute top-2 right-2">
-                    <Badge className="bg-success text-success-foreground">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Attended
-                    </Badge>
+          <Card className="bg-gradient-card shadow-card border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Attended Events
+                <Badge variant="secondary">{attendedEvents.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {attendedEvents.map((event) => (
+                  <div key={event.id} className="relative">
+                    <EventCard
+                      event={event}
+                      onViewDetails={() => console.log('View details:', event.id)}
+                    />
+                    <div className="absolute top-2 right-2">
+                      <Badge className="bg-success text-success-foreground">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Attended
+                      </Badge>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {attendedEvents.length === 0 && (
-                <p className="text-center text-muted-foreground py-8 col-span-2">
-                  No events attended yet
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </Layout>
-    <Dialog open={feedbackDialogOpen} onOpenChange={handleFeedbackDialogChange}>
-      <DialogContent className="w-full max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Share feedback</DialogTitle>
-          {pendingFeedbackEvent && (
-            <p className="text-sm text-muted-foreground">
-              {pendingFeedbackEvent.title} • {new Date(pendingFeedbackEvent.date).toLocaleString()}
-            </p>
-          )}
-        </DialogHeader>
-        {pendingFeedbackEvent ? (
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Overall experience</p>
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={feedbackRating === value ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-9 w-9 rounded-full p-0"
-                    onClick={() => setFeedbackRating(value)}
-                  >
-                    {value}
-                  </Button>
                 ))}
+                {attendedEvents.length === 0 && (
+                  <p className="text-center text-muted-foreground py-8 col-span-2">
+                    No events attended yet
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+      <Dialog open={feedbackDialogOpen} onOpenChange={handleFeedbackDialogChange}>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Share feedback</DialogTitle>
+            {pendingFeedbackEvent && (
+              <p className="text-sm text-muted-foreground">
+                {pendingFeedbackEvent.title} • {new Date(pendingFeedbackEvent.date).toLocaleString()}
+              </p>
+            )}
+          </DialogHeader>
+          {pendingFeedbackEvent ? (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Overall experience</p>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant={feedbackRating === value ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-9 w-9 rounded-full p-0"
+                      onClick={() => setFeedbackRating(value)}
+                    >
+                      {value}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Highlights or suggestions</p>
+                <Textarea
+                  value={feedbackComments}
+                  onChange={(e) => setFeedbackComments(e.target.value)}
+                  rows={4}
+                  placeholder="Share what went well and what can improve."
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Highlights or suggestions</p>
-              <Textarea
-                value={feedbackComments}
-                onChange={(e) => setFeedbackComments(e.target.value)}
-                rows={4}
-                placeholder="Share what went well and what can improve."
-              />
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Loading event info…</p>
-        )}
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleFeedbackDialogChange(false)}
-            disabled={feedbackSubmitting}
-            className="w-full sm:w-auto"
-          >
-            Maybe later
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmitFeedback}
-            disabled={feedbackSubmitting || !pendingFeedbackEvent}
-            className="gap-2 w-full sm:w-auto"
-          >
-            {feedbackSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Submit feedback
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </>
-);
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading event info…</p>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleFeedbackDialogChange(false)}
+              disabled={feedbackSubmitting}
+              className="w-full sm:w-auto"
+            >
+              Maybe later
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitFeedback}
+              disabled={feedbackSubmitting || !pendingFeedbackEvent}
+              className="gap-2 w-full sm:w-auto"
+            >
+              {feedbackSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Submit feedback
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }

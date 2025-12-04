@@ -3,7 +3,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'dean' | 'admin' | 'coordinator' | 'student';
+  role: 'dean' | 'admin' | 'coordinator' | 'student' | 'superadmin';
   created_at: string;
   registration_id?: string;
   phone?: string;

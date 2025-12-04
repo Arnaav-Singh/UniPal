@@ -1,37 +1,15 @@
 // Dean/superadmin command center for approvals, user management, and reporting.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
-import {
-  Button,
-} from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Input,
-} from '@/components/ui/input';
-import {
-  Label,
-} from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -40,8 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
 import { Event, EventInvitation, EventReport, User, DeanOverviewMetrics } from '@/types';
@@ -69,6 +48,17 @@ import {
   BarChart3,
   Search,
   Download,
+  CalendarDays,
+  QrCode,
+  FileText,
+  Sparkles,
+  UserPlus,
+  Building2,
+  GraduationCap,
+  X,
+  RefreshCcw,
+  Star,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -86,6 +76,8 @@ interface NewEventState {
   title: string;
   description: string;
   date: string;
+  startDate: string;
+  endDate: string;
   time: string;
   location: string;
   school: string;
@@ -98,6 +90,8 @@ interface NewEventState {
   delivery_mode: 'in-person' | 'online' | 'hybrid';
   tags: string;
   sponsors: string;
+  sdg: string[];
+  guest_speakers: string;
   requires_approval: boolean;
 }
 
@@ -132,7 +126,8 @@ export default function DeanDashboard() {
   const [approvalLoading, setApprovalLoading] = useState(false);
 
   const [isCreatingUser, setIsCreatingUser] = useState(false);
-  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false); // New state for event creation sheet
+  const [createLoading, setCreateLoading] = useState(false); // New state for event creation loading
   const [isLoading, setIsLoading] = useState(true);
   const [isUsersLoading, setIsUsersLoading] = useState(false);
   const [userSchoolFilter, setUserSchoolFilter] = useState<'others' | 'all' | string>('others');
@@ -152,6 +147,8 @@ export default function DeanDashboard() {
     title: '',
     description: '',
     date: '',
+    startDate: '',
+    endDate: '',
     time: '',
     location: '',
     school: DEFAULT_SCHOOL,
@@ -164,6 +161,8 @@ export default function DeanDashboard() {
     delivery_mode: 'in-person',
     tags: '',
     sponsors: '',
+    sdg: [],
+    guest_speakers: '',
     requires_approval: true,
   });
 
@@ -204,6 +203,8 @@ export default function DeanDashboard() {
       title: '',
       description: '',
       date: '',
+      startDate: '',
+      endDate: '',
       time: '',
       location: '',
       school: DEFAULT_SCHOOL,
@@ -216,6 +217,8 @@ export default function DeanDashboard() {
       delivery_mode: 'in-person',
       tags: '',
       sponsors: '',
+      sdg: [],
+      guest_speakers: '',
       requires_approval: true,
     });
   };
@@ -359,19 +362,30 @@ export default function DeanDashboard() {
   // Submit a dean-authored event and reset form inputs.
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEvent.date) {
+    setCreateLoading(true);
+    if (!newEvent.date && !newEvent.startDate) {
       toast({
         title: 'Event date required',
-        description: 'Please select a date and time for the event.',
+        description: 'Please select a date (or start date) for the event.',
         variant: 'destructive',
       });
+      setCreateLoading(false);
+      return;
+    }
+    if (!newEvent.time) {
+      toast({
+        title: 'Event time required',
+        description: 'Please select a time for the event.',
+        variant: 'destructive',
+      });
+      setCreateLoading(false);
       return;
     }
 
     try {
-      const isoDate = newEvent.time
+      const isoDate = newEvent.date
         ? new Date(`${newEvent.date}T${newEvent.time}`).toISOString()
-        : new Date(newEvent.date).toISOString();
+        : new Date(`${newEvent.startDate}T${newEvent.time}`).toISOString();
 
       const tagList = newEvent.tags
         .split(',')
@@ -386,6 +400,8 @@ export default function DeanDashboard() {
         title: newEvent.title,
         description: newEvent.description,
         date: isoDate,
+        startDate: newEvent.startDate,
+        endDate: newEvent.endDate,
         location: newEvent.location,
         school: newEvent.school,
         department: newEvent.department,
@@ -397,6 +413,8 @@ export default function DeanDashboard() {
         delivery_mode: newEvent.delivery_mode,
         tags: tagList,
         sponsors: sponsorList,
+        sdg: newEvent.sdg,
+        guest_speakers: newEvent.guest_speakers.split('\n').filter(s => s.trim()),
         requires_approval: newEvent.requires_approval,
       });
 
@@ -404,7 +422,7 @@ export default function DeanDashboard() {
         title: 'Event scheduled',
         description: `${newEvent.title} has been created and assigned to the selected coordinators.`,
       });
-      setIsCreatingEvent(false);
+      setCreateDialogOpen(false);
       resetNewEvent();
       loadData();
     } catch (error) {
@@ -413,6 +431,8 @@ export default function DeanDashboard() {
         description: error instanceof Error ? error.message : 'Please review the details and try again.',
         variant: 'destructive',
       });
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -597,431 +617,406 @@ export default function DeanDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Dialog open={isCreatingEvent} onOpenChange={(open) => {
-              setIsCreatingEvent(open);
-              if (!open) {
-                resetNewEvent();
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Target className="w-4 h-4" />
-                  Schedule Event
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="w-full max-w-3xl">
+            <Button className="gap-2" onClick={() => setCreateDialogOpen(true)}>
+              <Target className="w-4 h-4" />
+              Schedule Event
+            </Button>
+            {/* Create Event Dialog */}
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <DialogContent className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Schedule a New Event</DialogTitle>
+                  <DialogTitle>Schedule New Event</DialogTitle>
                   <DialogDescription>
-                    Create an event for any school, assign coordinators, and route it for dean approval.
+                    Create a new event for your school or department.
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreateEvent} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="eventTitle">Event Title</Label>
-                      <Input
-                        id="eventTitle"
-                        value={newEvent.title}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, title: e.target.value }))}
-                        placeholder="Tech Symposium 2025"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="eventDate">Date</Label>
-                      <Input
-                        id="eventDate"
-                        type="date"
-                        value={newEvent.date}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, date: e.target.value }))}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="eventTime">Time</Label>
-                      <Input
-                        id="eventTime"
-                        type="time"
-                        value={newEvent.time}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, time: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="eventLocation">Venue</Label>
-                      <Input
-                        id="eventLocation"
-                        value={newEvent.location}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, location: e.target.value }))}
-                        placeholder="Innovation Hub Auditorium"
-                        required
-                      />
-                    </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="eventDescription">Description</Label>
-                    <Textarea
-                      id="eventDescription"
-                      value={newEvent.description}
-                      onChange={(e) => setNewEvent((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="Provide any context or goals for this event"
-                      rows={4}
-                    />
-                  </div>
+                <form onSubmit={handleCreateEvent} className="space-y-8 py-4">
+                  {/* Basic Details Section */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Basic Details</h3>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="eventTitle">Event Title</Label>
+                        <Input
+                          id="eventTitle"
+                          value={newEvent.title}
+                          onChange={(e) => setNewEvent((prev) => ({ ...prev, title: e.target.value }))}
+                          placeholder="e.g., Annual Tech Symposium 2024"
+                          className="text-lg font-medium"
+                          required
+                        />
+                      </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="eventSchool">School</Label>
-                      <Select value={newEvent.school} onValueChange={handleNewEventSchoolChange}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select school" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {schoolOptions.map((school) => (
-                            <SelectItem key={school} value={school}>
-                              {school}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-2">
+                        <Label htmlFor="eventDescription">Description</Label>
+                        <Textarea
+                          id="eventDescription"
+                          value={newEvent.description}
+                          onChange={(e) => setNewEvent((prev) => ({ ...prev, description: e.target.value }))}
+                          placeholder="Provide context, goals, and what attendees can expect..."
+                          rows={3}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="eventDepartment">Department / Programme</Label>
-                      <Select
-                        value={newEvent.department}
-                        onValueChange={(value) => setNewEvent((prev) => ({ ...prev, department: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select branch" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {newEventBranches.map((branch) => (
-                            <SelectItem key={branch} value={branch}>
-                              {branch}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                  </section>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Invitation Mode</Label>
-                      <Select
-                        value={newEvent.invitation_mode}
-                        onValueChange={(value: 'invite-only' | 'open') =>
-                          setNewEvent((prev) => ({ ...prev, invitation_mode: value }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select invitation mode" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="invite-only">Invite-only (recommended)</SelectItem>
-                          <SelectItem value="open">Open to all students</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Allow self check-in</Label>
-                      <Select
-                        value={newEvent.allow_self_check_in ? 'yes' : 'no'}
-                        onValueChange={(value: 'yes' | 'no') =>
-                          setNewEvent((prev) => ({ ...prev, allow_self_check_in: value === 'yes' }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Allow self check-in" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yes">Yes — attendees can scan and mark attendance</SelectItem>
-                          <SelectItem value="no">No — coordinators will mark attendance</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Category</Label>
-                      <Select
-                        value={newEvent.category}
-                        onValueChange={(value) => setNewEvent((prev) => ({ ...prev, category: value as NewEventState['category'] }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="seminar">Seminar</SelectItem>
-                          <SelectItem value="workshop">Workshop</SelectItem>
-                          <SelectItem value="guest-lecture">Guest Lecture</SelectItem>
-                          <SelectItem value="hackathon">Hackathon</SelectItem>
-                          <SelectItem value="competition">Competition</SelectItem>
-                          <SelectItem value="orientation">Orientation</SelectItem>
-                          <SelectItem value="cultural">Cultural</SelectItem>
-                          <SelectItem value="sports">Sports</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Format</Label>
-                      <Select
-                        value={newEvent.event_format}
-                        onValueChange={(value) => setNewEvent((prev) => ({ ...prev, event_format: value as NewEventState['event_format'] }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select format" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="seminar">Seminar</SelectItem>
-                          <SelectItem value="panel">Panel Discussion</SelectItem>
-                          <SelectItem value="hands-on">Hands-on / Lab</SelectItem>
-                          <SelectItem value="networking">Networking</SelectItem>
-                          <SelectItem value="ceremony">Ceremony</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Delivery Mode</Label>
-                      <Select
-                        value={newEvent.delivery_mode}
-                        onValueChange={(value) => setNewEvent((prev) => ({ ...prev, delivery_mode: value as NewEventState['delivery_mode'] }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select mode" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="in-person">In-person</SelectItem>
-                          <SelectItem value="online">Online</SelectItem>
-                          <SelectItem value="hybrid">Hybrid</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="eventTags">Tags</Label>
-                      <Input
-                        id="eventTags"
-                        value={newEvent.tags}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, tags: e.target.value }))}
-                        placeholder="innovation, ai, alumni"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="eventSponsors">Sponsors / Partners</Label>
-                      <Input
-                        id="eventSponsors"
-                        value={newEvent.sponsors}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, sponsors: e.target.value }))}
-                        placeholder="Manipal Alumni Association"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Requires Dean Approval</Label>
-                      <Select
-                        value={newEvent.requires_approval ? 'yes' : 'no'}
-                        onValueChange={(value: 'yes' | 'no') =>
-                          setNewEvent((prev) => ({ ...prev, requires_approval: value === 'yes' }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yes">Yes, route for approval</SelectItem>
-                          <SelectItem value="no">No, publish immediately</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Assign Coordinators</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {coordinators.map((coordinator) => {
-                        const isSelected = newEvent.coordinatorIds.includes(coordinator.id);
-                        return (
-                          <Button
-                            key={coordinator.id}
-                            type="button"
-                            variant={isSelected ? 'default' : 'outline'}
-                            className="gap-2"
-                            onClick={() => {
-                              setNewEvent((prev) => ({
-                                ...prev,
-                                coordinatorIds: isSelected
-                                  ? prev.coordinatorIds.filter((id) => id !== coordinator.id)
-                                  : [...prev.coordinatorIds, coordinator.id],
-                              }));
-                            }}
-                          >
-                            {isSelected && <Check className="w-4 h-4" />}
-                            {coordinator.name}
-                          </Button>
-                        );
-                      })}
-                      {coordinators.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          Invite or create coordinator accounts first.
-                        </p>
+                  {/* Logistics Section */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Logistics</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {['hackathon', 'competition', 'cultural', 'sports'].includes(newEvent.category) ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="startDate">Start Date</Label>
+                            <Input
+                              id="startDate"
+                              type="date"
+                              value={newEvent.startDate}
+                              onChange={(e) => setNewEvent((prev) => ({ ...prev, startDate: e.target.value }))}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="endDate">End Date</Label>
+                            <Input
+                              id="endDate"
+                              type="date"
+                              value={newEvent.endDate}
+                              onChange={(e) => setNewEvent((prev) => ({ ...prev, endDate: e.target.value }))}
+                              required
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label htmlFor="eventDate">Date</Label>
+                          <Input
+                            id="eventDate"
+                            type="date"
+                            value={newEvent.date}
+                            onChange={(e) => setNewEvent((prev) => ({ ...prev, date: e.target.value }))}
+                            required
+                          />
+                        </div>
                       )}
-                    </div>
-                  </div>
 
-                  <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIsCreatingEvent(false);
-                        resetNewEvent();
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" className="gap-2 w-full sm:w-auto">
-                      <Target className="w-4 h-4" />
-                      Create Event
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+                      <div className="space-y-2">
+                        <Label htmlFor="eventTime">Time</Label>
+                        <Input
+                          id="eventTime"
+                          type="time"
+                          value={newEvent.time}
+                          onChange={(e) => setNewEvent((prev) => ({ ...prev, time: e.target.value }))}
+                          required
+                        />
+                      </div>
 
-            <Dialog open={isCreatingUser} onOpenChange={(open) => {
-              setIsCreatingUser(open);
-              if (!open) resetNewUser();
-            }}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Create Account
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="w-full max-w-md sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Create User Account</DialogTitle>
-                  <DialogDescription>
-                    Invite a dean, coordinator, or student to UniPal MIT.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleCreateUser} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="userName">Full Name</Label>
-                    <Input
-                      id="userName"
-                      value={newUser.name}
-                      onChange={(e) => setNewUser((prev) => ({ ...prev, name: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="userEmail">Email</Label>
-                    <Input
-                      id="userEmail"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser((prev) => ({ ...prev, email: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="userPassword">Temporary Password</Label>
-                    <Input
-                      id="userPassword"
-                      type="password"
-                      value={newUser.password}
-                      onChange={(e) => setNewUser((prev) => ({ ...prev, password: e.target.value }))}
-                      minLength={6}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Select
-                      value={newUser.role}
-                      onValueChange={(role: 'dean' | 'coordinator' | 'student') =>
-                        setNewUser((prev) => ({ ...prev, role }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="dean">Dean</SelectItem>
-                        <SelectItem value="coordinator">Coordinator</SelectItem>
-                        <SelectItem value="student">Student</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>School</Label>
-                      <Select value={newUser.school} onValueChange={handleNewUserSchoolChange}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select school" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {schoolOptions.map((school) => (
-                            <SelectItem key={school} value={school}>
-                              {school}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="eventLocation">Venue</Label>
+                        <Input
+                          id="eventLocation"
+                          value={newEvent.location}
+                          onChange={(e) => setNewEvent((prev) => ({ ...prev, location: e.target.value }))}
+                          placeholder="e.g., Innovation Hub Auditorium"
+                          required
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Department</Label>
-                      <Select
-                        value={newUser.department}
-                        onValueChange={(value) => setNewUser((prev) => ({ ...prev, department: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select branch" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {newUserBranches.map((branch) => (
-                            <SelectItem key={branch} value={branch}>
-                              {branch}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  </section>
+
+                  {/* Organization Section */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Organization</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label>School</Label>
+                        <Select
+                          value={newEvent.school}
+                          onValueChange={(value) => {
+                            const branches = getBranchesForSchool(value);
+                            setNewEvent((prev) => ({
+                              ...prev,
+                              school: value,
+                              department: branches[0] || '',
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select school" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getAllSchools().map((school) => (
+                              <SelectItem key={school} value={school}>
+                                {school}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Department / Programme</Label>
+                        <Select
+                          value={newEvent.department}
+                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, department: value }))}
+                          disabled={!newEvent.school}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select department" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getBranchesForSchool(newEvent.school).map((branch) => (
+                              <SelectItem key={branch} value={branch}>
+                                {branch}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Designation</Label>
-                    <Input
-                      value={newUser.designation}
-                      onChange={(e) => setNewUser((prev) => ({ ...prev, designation: e.target.value }))}
-                      placeholder="Dean / Faculty / Coordinator"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIsCreatingUser(false);
-                        resetNewUser();
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" className="gap-2 w-full sm:w-auto">
-                      <Mail className="w-4 h-4" />
-                      Send Invite
-                    </Button>
-                  </div>
+                  </section>
+
+                  {/* Categorization Section */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Categorization</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Category</Label>
+                        <Select
+                          value={newEvent.category}
+                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, category: value as NewEventState['category'] }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="seminar">Seminar</SelectItem>
+                            <SelectItem value="workshop">Workshop</SelectItem>
+                            <SelectItem value="guest-lecture">Guest Lecture</SelectItem>
+                            <SelectItem value="hackathon">Hackathon</SelectItem>
+                            <SelectItem value="competition">Competition</SelectItem>
+                            <SelectItem value="orientation">Orientation</SelectItem>
+                            <SelectItem value="cultural">Cultural</SelectItem>
+                            <SelectItem value="sports">Sports</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Format</Label>
+                        <Select
+                          value={newEvent.event_format}
+                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, event_format: value as NewEventState['event_format'] }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select format" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="seminar">Seminar</SelectItem>
+                            <SelectItem value="panel">Panel Discussion</SelectItem>
+                            <SelectItem value="hands-on">Hands-on / Lab</SelectItem>
+                            <SelectItem value="networking">Networking</SelectItem>
+                            <SelectItem value="ceremony">Ceremony</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Delivery Mode</Label>
+                        <Select
+                          value={newEvent.delivery_mode}
+                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, delivery_mode: value as NewEventState['delivery_mode'] }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select mode" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="in-person">In-person</SelectItem>
+                            <SelectItem value="online">Online</SelectItem>
+                            <SelectItem value="hybrid">Hybrid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="eventTags">Tags</Label>
+                        <Input
+                          id="eventTags"
+                          value={newEvent.tags}
+                          onChange={(e) => setNewEvent((prev) => ({ ...prev, tags: e.target.value }))}
+                          placeholder="innovation, ai, alumni"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="eventSponsors">Sponsors / Partners</Label>
+                        <Input
+                          id="eventSponsors"
+                          value={newEvent.sponsors}
+                          onChange={(e) => setNewEvent((prev) => ({ ...prev, sponsors: e.target.value }))}
+                          placeholder="Manipal Alumni Association"
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Additional Details Section */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Additional Details</h3>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="guestSpeakers">Guest Speakers (one per line)</Label>
+                      <Textarea
+                        id="guestSpeakers"
+                        value={newEvent.guest_speakers}
+                        onChange={(e) => setNewEvent((prev) => ({ ...prev, guest_speakers: e.target.value }))}
+                        placeholder="Dr. Jane Doe, CEO of TechCorp&#10;Mr. John Smith, AI Researcher"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Sustainable Development Goals (SDGs)</Label>
+                      <div className="flex flex-wrap gap-2 p-4 border rounded-lg bg-muted/20">
+                        {['SDG 1', 'SDG 2', 'SDG 3', 'SDG 4', 'SDG 5', 'SDG 6', 'SDG 7', 'SDG 8', 'SDG 9', 'SDG 10', 'SDG 11', 'SDG 12', 'SDG 13', 'SDG 14', 'SDG 15', 'SDG 16', 'SDG 17'].map((sdg) => {
+                          const isSelected = newEvent.sdg.includes(sdg);
+                          return (
+                            <Button
+                              key={sdg}
+                              type="button"
+                              variant={isSelected ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => {
+                                setNewEvent((prev) => ({
+                                  ...prev,
+                                  sdg: isSelected
+                                    ? prev.sdg.filter((s) => s !== sdg)
+                                    : [...prev.sdg, sdg],
+                                }));
+                              }}
+                              className={`text-xs h-7 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}
+                            >
+                              {sdg}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Assign Coordinators</Label>
+                      <div className="flex flex-wrap gap-2 p-4 border rounded-lg bg-muted/20 min-h-[100px]">
+                        {coordinators.map((coordinator) => {
+                          const isSelected = newEvent.coordinatorIds.includes(coordinator.id);
+                          return (
+                            <Button
+                              key={coordinator.id}
+                              type="button"
+                              variant={isSelected ? 'default' : 'outline'}
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => {
+                                setNewEvent((prev) => ({
+                                  ...prev,
+                                  coordinatorIds: isSelected
+                                    ? prev.coordinatorIds.filter((id) => id !== coordinator.id)
+                                    : [...prev.coordinatorIds, coordinator.id],
+                                }));
+                              }}
+                            >
+                              {isSelected && <Check className="w-4 h-4" />}
+                              {coordinator.name}
+                            </Button>
+                          );
+                        })}
+                        {coordinators.length === 0 && (
+                          <p className="text-sm text-muted-foreground w-full text-center py-8">
+                            No coordinators available.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Settings Section */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Settings</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label>Invitation Mode</Label>
+                        <Select
+                          value={newEvent.invitation_mode}
+                          onValueChange={(value: 'invite-only' | 'open') =>
+                            setNewEvent((prev) => ({ ...prev, invitation_mode: value }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select invitation mode" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="invite-only">Invite-only (recommended)</SelectItem>
+                            <SelectItem value="open">Open to all students</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Allow self check-in</Label>
+                        <Select
+                          value={newEvent.allow_self_check_in ? 'yes' : 'no'}
+                          onValueChange={(value: 'yes' | 'no') =>
+                            setNewEvent((prev) => ({ ...prev, allow_self_check_in: value === 'yes' }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Allow self check-in" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="yes">Yes — attendees can scan and mark attendance</SelectItem>
+                            <SelectItem value="no">No — coordinators will mark attendance</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Requires Dean Approval</Label>
+                        <Select
+                          value={newEvent.requires_approval ? 'yes' : 'no'}
+                          onValueChange={(value: 'yes' | 'no') =>
+                            setNewEvent((prev) => ({ ...prev, requires_approval: value === 'yes' }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="yes">Yes, route for approval</SelectItem>
+                            <SelectItem value="no">No, publish immediately</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </section>
                 </form>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateEvent} disabled={createLoading}>
+                    {createLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      'Schedule Event'
+                    )}
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
@@ -1609,6 +1604,6 @@ export default function DeanDashboard() {
           </DialogContent>
         </Dialog>
       </div>
-    </Layout>
+    </Layout >
   );
 }
