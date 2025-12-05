@@ -1,5 +1,5 @@
 // Provides QR scanning UI with manual entry fallback for attendance.
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,47 +17,7 @@ export function QRScanner({ onScanSuccess }: QRScannerProps) {
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Initialize scanner on mount
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        rememberLastUsedCamera: true,
-        showTorchButtonIfSupported: true
-      },
-      /* verbose= */ false
-    );
-
-    scanner.render(onScanSuccessCallback, onScanFailureCallback);
-    scannerRef.current = scanner;
-
-    // Cleanup on unmount
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(error => {
-          console.error("Failed to clear scanner", error);
-        });
-      }
-    };
-  }, []);
-
-  const onScanSuccessCallback = (decodedText: string) => {
-    // Stop scanning after success to prevent multiple triggers
-    if (scannerRef.current) {
-      scannerRef.current.pause();
-    }
-    handleScanResult(decodedText);
-  };
-
-  const onScanFailureCallback = (errorMessage: string) => {
-    // Ignore scan errors as they happen frequently when no QR is in view
-    // console.warn(`Code scan error = ${errorMessage}`);
-  };
-
-  const handleScanResult = (result: string) => {
+  const handleScanResult = useCallback((result: string) => {
     let eventId = result;
     let code: string | undefined;
 
@@ -82,7 +42,57 @@ export function QRScanner({ onScanSuccess }: QRScannerProps) {
     }
 
     onScanSuccess({ eventId, code });
-  };
+  }, [onScanSuccess]);
+
+  useEffect(() => {
+    // Use a flag to prevent race conditions in Strict Mode
+    let isMounted = true;
+
+    const onScanSuccessCallback = (decodedText: string) => {
+      // Stop scanning after success to prevent multiple triggers
+      if (scannerRef.current) {
+        scannerRef.current.pause();
+      }
+      handleScanResult(decodedText);
+    };
+
+    const onScanFailureCallback = (errorMessage: string) => {
+      // Ignore scan errors as they happen frequently when no QR is in view
+      // console.warn(`Code scan error = ${errorMessage}`);
+    };
+
+    // Initialize scanner
+    const scanner = new Html5QrcodeScanner(
+      "reader",
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        rememberLastUsedCamera: true,
+        showTorchButtonIfSupported: true
+      },
+      /* verbose= */ false
+    );
+
+    // Render only if mounted
+    if (isMounted) {
+      scanner.render(onScanSuccessCallback, onScanFailureCallback);
+      scannerRef.current = scanner;
+    }
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (scannerRef.current) {
+        // clear() returns a promise, we should handle it to avoid memory leaks
+        // although we can't await it here, we catch errors
+        scannerRef.current.clear().catch(error => {
+          console.warn("Failed to clear scanner during cleanup", error);
+        });
+        scannerRef.current = null;
+      }
+    };
+  }, [handleScanResult]);
 
   // Parse manual URLs or identifiers into event/code pairs.
   const handleManualSubmit = () => {

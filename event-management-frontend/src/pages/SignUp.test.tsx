@@ -29,10 +29,8 @@ describe('SignUp Component', () => {
         );
 
         // Check for Institute label
-        // Check for Institute label
         expect(screen.getByText('Institute')).toBeInTheDocument();
 
-        // Check for default value (since school is pre-selected)
         // Check for default value (since school is pre-selected)
         expect(screen.getAllByText('Manipal Institute of Technology').length).toBeGreaterThan(0);
     });

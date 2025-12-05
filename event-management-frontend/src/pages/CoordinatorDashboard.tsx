@@ -573,7 +573,7 @@ export default function CoordinatorDashboard() {
 
   const handleReportFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
-    const limited = Array.from(files).slice(0, 3);
+    const limited = Array.from(files).slice(0, 5);
     try {
       const converted = await Promise.all(
         limited.map(async (file) => ({

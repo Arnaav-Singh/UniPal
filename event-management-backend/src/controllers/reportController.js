@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import Event from '../models/Event.js';
+import Feedback from '../models/Feedback.js';
 import path from 'path';
 import fs from 'fs';
 import mongoose from 'mongoose';
@@ -21,11 +22,14 @@ export const generateEventReport = async (req, res) => {
 
         const event = await Event.findById(req.params.id)
             .populate('attendees')
-            .populate('coordinators');
+            .populate('coordinators')
+            .populate('attendanceLog.user');
 
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
         }
+
+        const feedbacks = await Feedback.find({ event: req.params.id }).populate('user');
 
         const { summary, photos } = req.body;
 
@@ -40,14 +44,24 @@ export const generateEventReport = async (req, res) => {
 
         // --- HEADER (Letterhead) ---
         const logoPath = path.join(process.cwd(), 'assets', 'mit-logo.jpg');
+        const sdgLogoPath = path.join(process.cwd(), 'assets', 'sdg_logo.png');
 
         const drawHeader = () => {
             if (fs.existsSync(logoPath)) {
                 try {
                     // Full width header in the top margin area
-                    doc.image(logoPath, 50, 20, { width: 500 });
+                    doc.image(logoPath, 50, 20, { width: 450 });
                 } catch (err) {
                     console.error('Error loading logo:', err);
+                }
+            }
+
+            if (fs.existsSync(sdgLogoPath)) {
+                try {
+                    // SDG logo at the top right
+                    doc.image(sdgLogoPath, 530, 20, { width: 80 });
+                } catch (err) {
+                    console.error('Error loading SDG logo:', err);
                 }
             }
         };
@@ -80,7 +94,7 @@ export const generateEventReport = async (req, res) => {
             { label: 'Time', value: event.time || 'N/A' },
             { label: 'Venue', value: event.location || 'N/A' },
             { label: 'Guest Speakers', value: event.guestSpeakers?.length ? event.guestSpeakers.join(', ') : 'N/A' },
-            { label: 'Participants', value: `${event.attendees?.length || 0} participants` },
+            { label: 'Participants', value: `${(event.attendance?.length || 0) + (event.attendees?.length || 0)} participants` },
             { label: 'SDGs covered', value: event.sdg?.length ? event.sdg.join(', ') : 'None' },
             { label: 'Conducted by', value: event.department || 'N/A' },
             { label: 'Coordinators', value: event.coordinators?.map(c => c.name).join(', ') || 'N/A' },
@@ -138,6 +152,87 @@ export const generateEventReport = async (req, res) => {
                     doc.text('[Error adding photo]', { align: 'center' });
                     doc.moveDown();
                 }
+            });
+        }
+
+        // --- ATTENDANCE LIST ---
+        if (event.attendanceLog && event.attendanceLog.length > 0) {
+            doc.addPage();
+            doc.fontSize(14).font('Helvetica-Bold').text('Attendance List', { align: 'center', underline: true });
+            doc.moveDown();
+
+            // Table Header
+            const drawTableHeader = () => {
+                const startY = doc.y;
+                doc.fontSize(12).font('Helvetica-Bold');
+                doc.text('Name', 50, startY, { width: 300 });
+                doc.text('Check-in Time', 350, startY, { width: 200, align: 'right' });
+
+                doc.moveDown(0.5);
+                doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(11);
+            };
+
+            drawTableHeader();
+
+            event.attendanceLog.forEach((entry) => {
+                if (doc.y > 750) { // Check for end of page
+                    doc.addPage();
+                    doc.fontSize(14).font('Helvetica-Bold').text('Attendance List (Cont.)', { align: 'center', underline: true });
+                    doc.moveDown();
+                    drawTableHeader();
+                }
+
+                const name = entry.user ? entry.user.name : 'Unknown User';
+                const time = entry.capturedAt ? new Date(entry.capturedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A';
+
+                const rowY = doc.y;
+                doc.text(name, 50, rowY, { width: 300 });
+                doc.text(time, 350, rowY, { width: 200, align: 'right' });
+                doc.moveDown(0.5);
+            });
+        }
+
+        // --- FEEDBACK LIST ---
+        if (feedbacks && feedbacks.length > 0) {
+            doc.addPage();
+            doc.fontSize(14).font('Helvetica-Bold').text('Feedback List', { align: 'center', underline: true });
+            doc.moveDown();
+
+            // Table Header
+            const drawFeedbackTableHeader = () => {
+                const startY = doc.y;
+                doc.fontSize(12).font('Helvetica-Bold');
+                doc.text('Name', 50, startY, { width: 150 });
+                doc.text('Rating', 200, startY, { width: 50, align: 'center' });
+                doc.text('Comment', 270, startY, { width: 280 });
+
+                doc.moveDown(0.5);
+                doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(11);
+            };
+
+            drawFeedbackTableHeader();
+
+            feedbacks.forEach((feedback) => {
+                if (doc.y > 700) { // Check for end of page
+                    doc.addPage();
+                    doc.fontSize(14).font('Helvetica-Bold').text('Feedback List (Cont.)', { align: 'center', underline: true });
+                    doc.moveDown();
+                    drawFeedbackTableHeader();
+                }
+
+                const name = feedback.user ? feedback.user.name : 'Anonymous';
+                const rating = feedback.rating ? `${feedback.rating}/5` : 'N/A';
+                const comment = feedback.comments || '-';
+
+                const rowY = doc.y;
+                doc.text(name, 50, rowY, { width: 150 });
+                doc.text(rating, 200, rowY, { width: 50, align: 'center' });
+                doc.text(comment, 270, rowY, { width: 280 });
+                doc.moveDown(1); // Extra spacing for potentially long comments
             });
         }
 

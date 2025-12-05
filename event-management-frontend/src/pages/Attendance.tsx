@@ -18,7 +18,7 @@ export default function AttendancePage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [code, setCode] = useState('');
-  const [registrationId, setRegistrationId] = useState(user?.registration_id ?? '');
+  // Registration ID is now derived from the authenticated user context
   const [signatureData, setSignatureData] = useState('');
   const [hasSignature, setHasSignature] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -36,11 +36,13 @@ export default function AttendancePage() {
     }
   }, [qrCodeParam]);
 
+  // Redirect unauthenticated users immediately
   useEffect(() => {
-    if (!registrationId && user?.registration_id) {
-      setRegistrationId(user.registration_id);
+    if (!user) {
+      // Preserve the current location to redirect back after login if needed
+      navigate('/login', { state: { from: location.pathname + location.search } });
     }
-  }, [registrationId, user?.registration_id]);
+  }, [user, navigate]);
 
   const initialiseCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -145,10 +147,8 @@ export default function AttendancePage() {
       setError('Please enter the attendance code from the coordinator.');
       return;
     }
-    if (!registrationId.trim()) {
-      setError('Please enter your college registration number.');
-      return;
-    }
+
+    // Registration ID is handled by backend from auth token
     if (!signatureData) {
       setError('Please sign inside the box before submitting.');
       return;
@@ -158,7 +158,6 @@ export default function AttendancePage() {
     try {
       await apiService.checkInWithCode(eventId, {
         code: code.trim(),
-        registrationId: registrationId.trim(),
         signature: signatureData,
       });
       setStatus('success');
@@ -181,11 +180,6 @@ export default function AttendancePage() {
           <CardTitle className="text-center">Mark Attendance</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!user && (
-            <p className="text-sm text-muted-foreground text-center">
-              Please <Link to="/login" className="text-primary underline">log in</Link> before marking attendance.
-            </p>
-          )}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="attendanceCode">Attendance Code</Label>
@@ -204,16 +198,7 @@ export default function AttendancePage() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="registrationId">College Registration Number</Label>
-              <Input
-                id="registrationId"
-                value={registrationId}
-                onChange={(e) => setRegistrationId(e.target.value.toUpperCase())}
-                placeholder="e.g. 21BCS1234"
-                required
-              />
-            </div>
+
 
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm font-medium">
@@ -269,3 +254,4 @@ export default function AttendancePage() {
     </div>
   );
 }
+
