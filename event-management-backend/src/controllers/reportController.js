@@ -108,6 +108,51 @@ export const generateEventReport = async (req, res) => {
 
         doc.moveDown(2);
 
+        // --- SDG LOGOS ---
+        console.log('Event SDG data:', event.sdg); // Debug log
+        if (event.sdg && event.sdg.length > 0) {
+            const startX = 50;
+            let x = startX;
+            let y = doc.y;
+            const size = 40;
+            const spacing = 10;
+            const pageWidth = doc.page.width - 50; // Right margin
+
+            event.sdg.forEach(sdgString => {
+                console.log('Processing SDG string:', sdgString); // Debug log
+                // Extract number from "SDG1: No Poverty" -> "1"
+                const match = sdgString.match(/SDG(\d+)/);
+                if (match) {
+                    const number = match[1].padStart(2, '0'); // "01", "10"
+                    const filename = `E-WEB-Goal-${number}.png`;
+                    const sdgPath = path.join(process.cwd(), 'assets', 'sdg', filename);
+                    console.log('SDG Path:', sdgPath); // Debug log
+                    console.log('File exists:', fs.existsSync(sdgPath)); // Debug log
+
+                    if (fs.existsSync(sdgPath)) {
+                        // Check if logo fits on current line
+                        if (x + size > pageWidth) {
+                            x = startX;
+                            y += size + spacing;
+                        }
+
+                        try {
+                            doc.image(sdgPath, x, y, { width: size });
+                            x += size + spacing;
+                        } catch (err) {
+                            console.error(`Error loading SDG image ${filename}:`, err);
+                        }
+                    }
+                } else {
+                    console.log('No match for regex /SDG(\d+)/'); // Debug log
+                }
+            });
+            // Adjust doc.y to be below the last row of logos
+            doc.y = y + size + 20;
+        } else {
+            console.log('No SDGs found for this event.'); // Debug log
+        }
+
         // --- SESSION DETAILS ---
         doc.fontSize(12).font('Helvetica-Bold').text('Session-wise Details:');
         doc.moveDown(0.5);

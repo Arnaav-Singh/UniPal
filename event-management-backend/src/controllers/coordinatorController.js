@@ -174,6 +174,7 @@ export const createEvent = async (req, res) => {
       budget,
       invitationMode,
       allowSelfCheckIn,
+      sdg, // Extract sdg
     } = req.body;
 
     const eventName = name || title;
@@ -205,6 +206,7 @@ export const createEvent = async (req, res) => {
       importantContacts: parseContacts(importantContacts),
       invitationMode: invitationMode === 'open' ? 'open' : 'invite-only',
       allowSelfCheckIn: allowSelfCheckIn !== false,
+      sdg: parseList(sdg), // Save sdg
       status: 'draft',
       requiresApproval: true,
       approvalStatus: 'pending',
@@ -259,6 +261,7 @@ export const updateEvent = async (req, res) => {
       'category',
       'eventFormat',
       'deliveryMode',
+      'sdg', // Add sdg to editable fields
     ];
 
     let requiresReapproval = false;
@@ -285,6 +288,10 @@ export const updateEvent = async (req, res) => {
         requiresReapproval = true;
       }
       event[field] = req.body[field];
+    }
+
+    if ('sdg' in req.body) {
+      event.sdg = parseList(req.body.sdg);
     }
 
     if ('tags' in req.body) {

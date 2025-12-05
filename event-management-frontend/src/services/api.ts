@@ -237,6 +237,7 @@ function mapEvent(be: BackendEvent): Event {
 			(be as { feedback_submitted?: boolean }).feedback_submitted ??
 			false
 		),
+		sdg: Array.isArray(be.sdg) ? be.sdg : [], // Map sdg
 	};
 }
 
@@ -648,6 +649,7 @@ class APIService {
 		if (Array.isArray(updates.important_contacts)) payload.importantContacts = mapContactsToBackend(updates.important_contacts);
 		if (typeof updates.requires_approval === 'boolean') payload.requiresApproval = updates.requires_approval;
 		if (typeof updates.approval_notes === 'string') payload.approvalNotes = updates.approval_notes;
+		if (Array.isArray(updates.sdg)) payload.sdg = updates.sdg; // Send sdg update
 
 		const data = await http<BackendEvent>(`/api/events/${id}`, {
 			method: 'PUT',

@@ -74,6 +74,7 @@ export interface Event {
   important_contacts: EventContact[];
   report?: EventReport | null;
   feedback_submitted?: boolean;
+  sdg?: string[];
 }
 
 export interface Attendance {
@@ -204,6 +205,7 @@ export interface BackendEvent {
   importantContacts?: BackendContact[];
   report?: BackendEventReport | null;
   feedbackSubmitted?: boolean;
+  sdg?: string[];
 }
 
 export interface BackendFeedback {

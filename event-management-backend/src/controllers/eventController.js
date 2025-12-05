@@ -224,7 +224,10 @@ export const createEvent = async (req, res) => {
       importantContacts,
       requiresApproval,
       approvalNotes,
+      sdg, // Extract sdg
     } = req.body;
+
+    console.log('createEvent req.body.sdg:', sdg); // PERSISTENT DEBUG LOG
 
     const coordinatorObjectIds = normalizeObjectIdArray(coordinatorIds);
     const tagList = normaliseStringArray(tags);
@@ -282,6 +285,7 @@ export const createEvent = async (req, res) => {
       importantContacts: normaliseContacts(importantContacts),
       createdBy: req.user?._id,
       coordinators: coordinatorObjectIds,
+      sdg: normaliseStringArray(sdg), // Save sdg
     });
 
     // Automatically create accepted invitations for assigned coordinators
@@ -343,6 +347,7 @@ export const updateEvent = async (req, res) => {
       'category',
       'eventFormat',
       'deliveryMode',
+      'sdg', // Allow sdg update
     ];
 
     for (const field of editableFields) {
