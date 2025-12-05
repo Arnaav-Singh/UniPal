@@ -115,7 +115,7 @@ export default function CoordinatorDashboard() {
     location: '',
     school: coordinatorSchool,
     department: getBranchesForSchool(coordinatorSchool)[0] ?? '',
-    invitation_mode: 'invite-only',
+    invitation_mode: 'open',
     allow_self_check_in: true,
     sdg: [],
     guest_speakers: '',
@@ -315,7 +315,13 @@ export default function CoordinatorDashboard() {
     const uniqueInvitees: { userId?: string; email?: string; roleAtEvent: 'coordinator' | 'attendee'; message?: string }[] = [];
     const seen = new Set<string>();
     for (const invitee of combinedInvitees) {
-      const key = invitee.userId ? `user:${invitee.userId}` : invitee.email ? `email:${invitee.email.toLowerCase()}` : null;
+      let key: string | null = null;
+      if ('userId' in invitee) {
+        key = `user:${invitee.userId}`;
+      } else if ('email' in invitee) {
+        key = `email:${invitee.email.toLowerCase()}`;
+      }
+
       if (!key || seen.has(key)) continue;
       seen.add(key);
       uniqueInvitees.push(invitee);
@@ -478,7 +484,7 @@ export default function CoordinatorDashboard() {
         endDate: '',
         time: '',
         location: '',
-        invitation_mode: 'invite-only',
+        invitation_mode: 'open',
         allow_self_check_in: true,
         sdg: [],
         guest_speakers: '',
@@ -902,7 +908,7 @@ export default function CoordinatorDashboard() {
                 date: '',
                 time: '',
                 location: '',
-                invitation_mode: 'invite-only',
+                invitation_mode: 'open',
                 allow_self_check_in: true,
                 sdg: [],
                 guest_speakers: '',
@@ -958,6 +964,7 @@ export default function CoordinatorDashboard() {
                         <SelectItem value="orientation">Orientation</SelectItem>
                         <SelectItem value="cultural">Cultural</SelectItem>
                         <SelectItem value="sports">Sports</SelectItem>
+                        <SelectItem value="department-meeting">Department Meeting</SelectItem>
                         <SelectItem value="other">Other</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1024,10 +1031,10 @@ export default function CoordinatorDashboard() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>School</Label>
+                  <Label>Institute</Label>
                   <Select value={createForm.school} onValueChange={(value) => handleCreateFormChange('school', value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select school" />
+                      <SelectValue placeholder="Select institute" />
                     </SelectTrigger>
                     <SelectContent>
                       {schoolOptions.map((school) => (

@@ -82,8 +82,8 @@ export default function SignUp() {
 
     if (!formData.school || !formData.department) {
       toast({
-        title: "School details required",
-        description: "Please select your school and branch so coordinators can reach you easily.",
+        title: "Institute details required",
+        description: "Please select your institute and branch so coordinators can reach you easily.",
         variant: "destructive"
       });
       setLoading(false);
@@ -180,7 +180,7 @@ export default function SignUp() {
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -208,10 +208,10 @@ export default function SignUp() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="school">School</Label>
+                <Label htmlFor="school">Institute</Label>
                 <Select value={formData.school} onValueChange={(value) => handleInputChange('school', value)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select school" />
+                    <SelectValue placeholder="Select institute" />
                   </SelectTrigger>
                   <SelectContent>
                     {schoolOptions.map((school) => (
@@ -238,7 +238,7 @@ export default function SignUp() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
@@ -250,7 +250,7 @@ export default function SignUp() {
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <Input
@@ -262,10 +262,10 @@ export default function SignUp() {
                   required
                 />
               </div>
-              
-              <Button 
-                type="submit" 
-                className="w-full gap-2 shadow-button transition-all duration-300 hover:-translate-y-0.5 hover:shadow-glow" 
+
+              <Button
+                type="submit"
+                className="w-full gap-2 shadow-button transition-all duration-300 hover:-translate-y-0.5 hover:shadow-glow"
                 disabled={loading}
               >
                 <UserPlus className="w-4 h-4" />
