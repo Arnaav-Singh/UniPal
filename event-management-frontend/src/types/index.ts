@@ -10,6 +10,8 @@ export interface User {
   school?: string;
   department?: string;
   designation?: string;
+  section?: string;
+  semester?: number;
 }
 
 export interface EventReport {
@@ -41,13 +43,14 @@ export interface Event {
   title: string;
   description: string;
   date: string;
+  startDate?: string;
+  endDate?: string;
   time?: string;
   location: string;
   school?: string;
   department?: string;
-  status: 'draft' | 'scheduled' | 'ongoing' | 'completed';
+  status: 'draft' | 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
   invitation_mode: 'open' | 'invite-only';
-  allow_self_check_in: boolean;
   category: string;
   event_format: string;
   delivery_mode: 'in-person' | 'online' | 'hybrid';
@@ -63,7 +66,10 @@ export interface Event {
   approved_at?: string;
   approved_by?: string;
   approved_by_name?: string;
+  created_by?: string;
+  created_by_name?: string;
   feedback_open?: boolean;
+  attendance_closed?: boolean;
   coordinators: string[];
   coordinator_names: string[];
   assigned_coordinator?: string;
@@ -91,6 +97,7 @@ export interface AttendanceRecord {
   email: string;
   signature?: string | null;
   timestamp?: string | null;
+  day_date?: string | null;
   school?: string;
   department?: string;
 }
@@ -115,6 +122,7 @@ export interface EventInvitation {
   message?: string;
   invitee: User;
   invited_by?: User;
+  event_name?: string;
 }
 
 export interface AuthUser {
@@ -136,6 +144,8 @@ export interface BackendUser {
   school?: string;
   department?: string;
   designation?: string;
+  section?: string;
+  semester?: number;
 }
 
 export interface BackendEventReport {
@@ -174,9 +184,10 @@ export interface BackendEvent {
   location: string;
   school?: string;
   department?: string;
-  status?: 'draft' | 'scheduled' | 'ongoing' | 'completed';
+  status?: 'draft' | 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
   invitationMode?: 'open' | 'invite-only';
-  allowSelfCheckIn?: boolean;
+  startDate?: string;
+  endDate?: string;
   category?: string;
   eventFormat?: string;
   deliveryMode?: 'in-person' | 'online' | 'hybrid';
@@ -192,12 +203,14 @@ export interface BackendEvent {
     capturedAt?: string;
   }>;
   feedbackOpen?: boolean;
+  attendanceClosed?: boolean;
   requiresApproval?: boolean;
   approvalStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
   approvalNotes?: string;
   approvedAt?: string;
-  approvedBy?: BackendUser | string;
+  approvedBy?: string | BackendUser;
   coordinators?: string[] | BackendUser[];
+  createdBy?: string | BackendUser;
   qr_code?: string;
   google_form_url?: string;
   createdAt?: string;

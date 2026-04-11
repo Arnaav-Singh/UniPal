@@ -2,10 +2,20 @@
 import User from '../models/User.js';
 import Event from '../models/Event.js';
 
-// Return the full user directory without password hashes.
+// Return user roster, optionally filtered by role.
 export const getUsers = async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const { role } = req.query;
+    const filter = {};
+    
+    // Coordinators can only see other coordinators for discovery.
+    if (req.user.role === 'coordinator') {
+      filter.role = 'coordinator';
+    } else if (role) {
+      filter.role = role;
+    }
+
+    const users = await User.find(filter).select('-password');
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });

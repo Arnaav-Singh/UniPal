@@ -8,7 +8,7 @@ import Feedback from '../models/Feedback.js';
 import User from '../models/User.js';
 import { sendEmail } from '../services/emailService.js';
 
-const allowedStatuses = ['draft', 'scheduled', 'ongoing', 'completed']; // canonical status transitions
+const allowedStatuses = ['draft', 'scheduled', 'ongoing', 'completed', 'cancelled']; // canonical status transitions
 
 // Lightweight guard to avoid casting invalid ids into queries.
 const isObjectId = (value) => {
@@ -52,7 +52,10 @@ const canManageEvent = (event, user) => {
   const createdById = normaliseIdValue(event.createdBy);
   const userId = user._id?.toString?.() || normaliseIdValue(user);
   if (createdById && userId && createdById === userId) return true;
-  return event.coordinators?.some((coordId) => normaliseIdValue(coordId) === userId);
+  
+  // Normalise all coordinator IDs to strings for comparison.
+  const coordinatorIds = (event.coordinators || []).map(normaliseIdValue).filter(Boolean);
+  return coordinatorIds.includes(userId);
 };
 
 // Reply with 403 if the caller lacks management rights.
@@ -115,13 +118,15 @@ const buildAttendanceSnapshot = (event) => {
     if (!id) return;
     const registrationFromLog = typeof log?.registrationId === 'string' ? log.registrationId : undefined;
     const registrationId = registrationFromLog || user.registrationId || user.userID;
-    roster.set(id, {
+    const key = log.dayDate ? `${id}_${log.dayDate}` : id;
+    roster.set(key, {
       userId: id,
       registrationId,
       name: user.name,
       email: user.email,
       signature: log.signature || null,
       timestamp: log.capturedAt ? log.capturedAt.toISOString() : null,
+      dayDate: log.dayDate || null,
       school: user.school,
       department: user.department,
     });
@@ -138,6 +143,7 @@ const buildAttendanceSnapshot = (event) => {
       email: user.email,
       signature: null,
       timestamp: null,
+      dayDate: null,
       school: user.school,
       department: user.department,
     });
@@ -211,7 +217,6 @@ export const createEvent = async (req, res) => {
       school,
       department,
       invitationMode,
-      allowSelfCheckIn,
       status,
       coordinatorIds,
       category,
@@ -224,10 +229,9 @@ export const createEvent = async (req, res) => {
       importantContacts,
       requiresApproval,
       approvalNotes,
-      sdg, // Extract sdg
+      sdg,
+      guestSpeakers,
     } = req.body;
-
-    console.log('createEvent req.body.sdg:', sdg); // PERSISTENT DEBUG LOG
 
     const coordinatorObjectIds = normalizeObjectIdArray(coordinatorIds);
     const tagList = normaliseStringArray(tags);
@@ -255,6 +259,13 @@ export const createEvent = async (req, res) => {
       ? (mapStatus(status) || 'scheduled')
       : 'draft';
 
+    // Auto-resolve the target dean based on the event's department
+    let targetDean;
+    if (department) {
+      const deanUser = await User.findOne({ role: 'dean', department });
+      if (deanUser) targetDean = deanUser._id;
+    }
+
     const event = await Event.create({
       name,
       date,
@@ -274,7 +285,6 @@ export const createEvent = async (req, res) => {
       sponsors: sponsorList,
       budget: parsedBudget,
       invitationMode: invitationMode === 'open' ? 'open' : 'invite-only',
-      allowSelfCheckIn: allowSelfCheckIn !== false,
       status: initialStatus,
       requiresApproval: needsApproval,
       approvalStatus,
@@ -285,7 +295,9 @@ export const createEvent = async (req, res) => {
       importantContacts: normaliseContacts(importantContacts),
       createdBy: req.user?._id,
       coordinators: coordinatorObjectIds,
-      sdg: normaliseStringArray(sdg), // Save sdg
+      targetDean,
+      sdg: normaliseStringArray(sdg),
+      guestSpeakers: normaliseStringArray(guestSpeakers),
     });
 
     // Automatically create accepted invitations for assigned coordinators
@@ -343,21 +355,16 @@ export const updateEvent = async (req, res) => {
       'school',
       'department',
       'invitationMode',
-      'allowSelfCheckIn',
       'category',
       'eventFormat',
       'deliveryMode',
-      'sdg', // Allow sdg update
+      'sdg',
     ];
 
     for (const field of editableFields) {
       if (!(field in req.body)) continue;
       if (field === 'invitationMode') {
         event.invitationMode = req.body.invitationMode === 'open' ? 'open' : 'invite-only';
-        continue;
-      }
-      if (field === 'allowSelfCheckIn') {
-        event.allowSelfCheckIn = req.body.allowSelfCheckIn !== false;
         continue;
       }
       event[field] = req.body[field];
@@ -403,6 +410,18 @@ export const updateEvent = async (req, res) => {
         if (newStatus === 'completed' && !event.finalizedAt) {
           event.finalizedAt = new Date();
         }
+        if (newStatus === 'cancelled') {
+          // Clear attendance codes when cancelled
+          event.attendanceCodes = [];
+          event.attendanceClosed = true;
+        }
+      }
+    }
+
+    if ('attendanceClosed' in req.body) {
+      event.attendanceClosed = Boolean(req.body.attendanceClosed);
+      if (event.attendanceClosed) {
+        event.attendanceCodes = [];
       }
     }
 
@@ -627,6 +646,7 @@ export const listEventInvitations = async (req, res) => {
 };
 
 // Allow privileged roles to approve or reject an event.
+// Strict department routing: only the dean whose department matches the event can approve.
 export const updateEventApproval = async (req, res) => {
   try {
     if (!isObjectId(req.params.id)) {
@@ -634,6 +654,11 @@ export const updateEventApproval = async (req, res) => {
     }
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    // Enforce department-based approval routing
+    if (req.user.department && event.department && req.user.department !== event.department) {
+      return res.status(403).json({ message: 'You can only approve events from your own department' });
+    }
 
     const { decision, notes } = req.body;
     if (!['approved', 'rejected'].includes(decision)) {
@@ -771,8 +796,7 @@ export const endEvent = async (req, res) => {
 
     event.status = 'completed';
     event.feedbackOpen = true;
-    event.attendanceCode = undefined;
-    event.attendanceCodeExpiresAt = undefined;
+    event.attendanceCodes = [];
     event.finalizedAt = event.finalizedAt || new Date();
     await event.save();
 
@@ -796,6 +820,7 @@ export const endEvent = async (req, res) => {
 };
 
 // Issue a short-lived attendance code that participants can scan.
+// For multi-day events, accepts an optional `dayDate` to scope the code to a specific day.
 export const generateAttendanceCode = async (req, res) => {
   try {
     if (!isObjectId(req.params.id)) {
@@ -809,12 +834,24 @@ export const generateAttendanceCode = async (req, res) => {
       return res.status(400).json({ message: 'Event approval pending. Please approve before generating attendance codes.' });
     }
 
+    const { dayDate } = req.body || {};
     const code = crypto.randomBytes(8).toString('hex');
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    event.attendanceCode = code;
-    event.attendanceCodeExpiresAt = expiresAt;
+
+    if (!Array.isArray(event.attendanceCodes)) {
+      event.attendanceCodes = [];
+    }
+
+    // Replace code for the same day or add a new day entry
+    const existingIdx = event.attendanceCodes.findIndex((c) => c.dayDate === (dayDate || null));
+    if (existingIdx !== -1) {
+      event.attendanceCodes[existingIdx] = { dayDate: dayDate || null, code, expiresAt };
+    } else {
+      event.attendanceCodes.push({ dayDate: dayDate || null, code, expiresAt });
+    }
+
     await event.save();
-    res.json({ code, expiresAt });
+    res.json({ code, expiresAt, dayDate: dayDate || null });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -849,24 +886,36 @@ export const generateFeedbackCode = async (req, res) => {
 };
 
 // Validate an attendance code and register the participant's presence.
+// Self check-in is removed — attendance is tracked via coordinator-presented QR scans.
 export const checkInWithCode = async (req, res) => {
   try {
     if (!isObjectId(req.params.id)) {
       return res.status(400).json({ message: 'Invalid event id' });
     }
 
-    const { code, registrationId, signature } = req.body || {};
+    const { code, registrationId, signature, dayDate } = req.body || {};
     const event = await Event.findById(req.params.id);
     if (!event) return res.status(404).json({ message: 'Event not found' });
     if (event.approvalStatus !== 'approved') {
       return res.status(403).json({ message: 'Event not approved yet' });
     }
-    if (!event.attendanceCode || event.attendanceCode !== code) {
+    if (event.status === 'cancelled') {
+      return res.status(403).json({ message: 'This event has been cancelled' });
+    }
+    if (event.attendanceClosed) {
+      return res.status(403).json({ message: 'Attendance is no longer being accepted for this event' });
+    }
+
+    // Validate against the day-specific (or general) attendance code
+    const codes = Array.isArray(event.attendanceCodes) ? event.attendanceCodes : [];
+    const matchedCode = codes.find((c) => c.code === code);
+    if (!matchedCode) {
       return res.status(400).json({ message: 'Invalid code' });
     }
-    if (!event.attendanceCodeExpiresAt || event.attendanceCodeExpiresAt < new Date()) {
+    if (!matchedCode.expiresAt || matchedCode.expiresAt < new Date()) {
       return res.status(400).json({ message: 'Code expired' });
     }
+    const resolvedDayDate = matchedCode.dayDate || dayDate || null;
 
     const userId = req.user._id.toString();
     const isCoordinator = event.coordinators?.some((coord) => coord.toString() === userId);
@@ -874,13 +923,19 @@ export const checkInWithCode = async (req, res) => {
     if (event.invitationMode === 'invite-only' && !isCoordinator && !isAttendee) {
       return res.status(403).json({ message: 'This event requires an invitation' });
     }
-    if (!event.allowSelfCheckIn && !isCoordinator) {
-      return res.status(403).json({ message: 'Coordinator must record attendance for you' });
+
+    // For multi-day events, check if already checked in for this specific day
+    const alreadyCheckedForDay = event.attendanceLog?.some(
+      (log) => log?.user?.toString() === userId && (log.dayDate || null) === resolvedDayDate
+    );
+    if (alreadyCheckedForDay) {
+      return res.json({ message: 'Already checked in' + (resolvedDayDate ? ` for ${resolvedDayDate}` : '') });
     }
 
-    const alreadyChecked = event.attendance?.some((att) => att.toString() === userId);
-    if (alreadyChecked) {
-      return res.json({ message: 'Already checked in' });
+    // Also add to the flat attendance array if not already present
+    const alreadyInAttendance = event.attendance?.some((att) => att.toString() === userId);
+    if (!alreadyInAttendance) {
+      event.attendance.push(req.user._id);
     }
 
     const providedRegistration = typeof registrationId === 'string' ? registrationId.trim() : '';
@@ -891,27 +946,16 @@ export const checkInWithCode = async (req, res) => {
     const signaturePayload = typeof signature === 'string' && signature.length > 0 ? signature : undefined;
 
     const now = new Date();
-    event.attendance.push(req.user._id);
     if (!Array.isArray(event.attendanceLog)) {
       event.attendanceLog = [];
     }
-    const existingLogIndex = event.attendanceLog.findIndex((log) => log?.user?.toString() === userId);
-    if (existingLogIndex === -1) {
-      event.attendanceLog.push({
-        user: req.user._id,
-        registrationId: derivedRegistrationId,
-        signature: signaturePayload,
-        capturedAt: now,
-      });
-    } else {
-      const current = event.attendanceLog[existingLogIndex];
-      current.capturedAt = current.capturedAt || now;
-      current.registrationId = derivedRegistrationId;
-      if (signaturePayload) {
-        current.signature = signaturePayload;
-      }
-      event.attendanceLog[existingLogIndex] = current;
-    }
+    event.attendanceLog.push({
+      user: req.user._id,
+      registrationId: derivedRegistrationId,
+      signature: signaturePayload,
+      capturedAt: now,
+      dayDate: resolvedDayDate,
+    });
     await event.save();
 
     await EventInvitation.findOneAndUpdate(
@@ -919,7 +963,7 @@ export const checkInWithCode = async (req, res) => {
       { status: 'accepted', respondedAt: new Date() },
     );
 
-    res.json({ message: 'Checked in' });
+    res.json({ message: 'Checked in', dayDate: resolvedDayDate });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1024,6 +1068,7 @@ export const generateEventReportPdf = async (req, res) => {
     const { summary, photos } = req.body || {};
     const event = await Event.findById(req.params.id)
       .populate('coordinators', 'name email role designation')
+      .populate('createdBy', 'name email role designation')
       .populate('attendance', 'name email role registrationId userID school department')
       .populate('attendanceLog.user', 'name email role registrationId userID school department');
     if (!event) return res.status(404).json({ message: 'Event not found' });
@@ -1046,13 +1091,22 @@ export const generateEventReportPdf = async (req, res) => {
     doc.fontSize(20).text(event.name || 'Event Report', { align: 'center' });
     doc.moveDown();
     doc.fontSize(12).text(`Date: ${event.date || 'TBD'}`);
-    if (event.time) doc.text(`Time: ${event.time}`);
+    if (event.time && event.time !== 'NA') {
+      doc.text(`Time: ${event.time}`);
+    } else {
+      doc.text(`Time: TBD`);
+    }
     doc.text(`Location: ${event.location || 'Not set'}`);
     if (event.school) doc.text(`School: ${event.school}`);
     if (event.department) doc.text(`Department: ${event.department}`);
     doc.moveDown();
-    if (event.coordinators?.length) {
-      doc.fontSize(12).text(`Coordinator: ${event.coordinators.map((c) => c.name).join(', ')}`);
+    const creatorName = event.createdBy?.name || 'Unknown';
+    const otherCoordinators = (event.coordinators || []).map((c) => c.name);
+    const allManagers = [...new Set([creatorName, ...otherCoordinators])].filter(Boolean);
+
+    doc.fontSize(12).text(`Event Proposer: ${creatorName}`);
+    if (allManagers.length > 1) {
+      doc.text(`Team Members: ${allManagers.filter(n => n !== creatorName).join(', ')}`);
     }
 
     doc.moveDown().fontSize(14).text('Summary / Minutes of Meeting', { underline: true });

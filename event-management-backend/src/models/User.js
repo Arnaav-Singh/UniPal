@@ -13,11 +13,18 @@ const userSchema = new mongoose.Schema({
   school: { type: String },
   department: { type: String },
   designation: { type: String },
+  staffCategory: {
+    type: String,
+    enum: ['teaching', 'non-teaching', 'student'],
+    default: 'student',
+  },
   role: {
     type: String,
     enum: ['dean', 'admin', 'coordinator', 'student', 'superadmin'],
     default: 'student',
   },
+  section: { type: String },
+  semester: { type: Number },
   authToken: { type: String },
 }, { timestamps: true });
 

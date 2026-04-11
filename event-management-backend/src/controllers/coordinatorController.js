@@ -158,6 +158,8 @@ export const createEvent = async (req, res) => {
       name,
       description,
       date,
+      startDate,
+      endDate,
       location,
       time,
       capacity,
@@ -173,8 +175,9 @@ export const createEvent = async (req, res) => {
       importantContacts,
       budget,
       invitationMode,
-      allowSelfCheckIn,
-      sdg, // Extract sdg
+      sdg,
+      guestSpeakers,
+      coordinatorIds,
     } = req.body;
 
     const eventName = name || title;
@@ -185,17 +188,38 @@ export const createEvent = async (req, res) => {
       amount: budget && budget.amount ? Number(budget.amount) || 0 : 0,
     };
 
+    // Build coordinators array: always include the creating user + any extras
+    const extraCoordinators = Array.isArray(coordinatorIds)
+      ? coordinatorIds
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+          .map((id) => new mongoose.Types.ObjectId(id))
+      : [];
+    const allCoordinators = [
+      req.user._id,
+      ...extraCoordinators.filter((id) => id.toString() !== req.user._id.toString()),
+    ];
+
+    // Auto-resolve the target dean based on the event's department
+    const eventDept = department || req.user.department;
+    let targetDean;
+    if (eventDept) {
+      const deanUser = await User.findOne({ role: 'dean', department: eventDept });
+      if (deanUser) targetDean = deanUser._id;
+    }
+
     const event = await Event.create({
       name: eventName,
       description,
       date,
+      startDate,
+      endDate,
       location,
       createdBy: req.user._id,
       time,
       capacity,
       banner,
       school,
-      department,
+      department: eventDept,
       category: category || 'other',
       eventFormat: eventFormat || 'other',
       deliveryMode: deliveryMode || 'in-person',
@@ -205,30 +229,35 @@ export const createEvent = async (req, res) => {
       agenda: parseAgenda(agenda),
       importantContacts: parseContacts(importantContacts),
       invitationMode: invitationMode === 'open' ? 'open' : 'invite-only',
-      allowSelfCheckIn: allowSelfCheckIn !== false,
-      sdg: parseList(sdg), // Save sdg
+      sdg: parseList(sdg),
+      guestSpeakers: parseList(guestSpeakers),
       status: 'draft',
       requiresApproval: true,
       approvalStatus: 'pending',
-      coordinators: [req.user._id],
+      coordinators: allCoordinators,
+      targetDean,
     });
 
-    await EventInvitation.findOneAndUpdate(
-      { event: event._id, invitee: req.user._id },
-      {
-        $set: {
-          invitedBy: req.user._id,
-          roleAtEvent: 'coordinator',
-          status: 'accepted',
-          respondedAt: new Date(),
+    // Create accepted invitations for all coordinators
+    const invitationDocs = allCoordinators.map((coordId) => ({
+      updateOne: {
+        filter: { event: event._id, invitee: coordId },
+        update: {
+          $set: {
+            invitedBy: req.user._id,
+            roleAtEvent: 'coordinator',
+            status: 'accepted',
+            respondedAt: new Date(),
+          },
+          $setOnInsert: {
+            event: event._id,
+            invitee: coordId,
+          },
         },
-        $setOnInsert: {
-          event: event._id,
-          invitee: req.user._id,
-        },
+        upsert: true,
       },
-      { upsert: true, new: true }
-    );
+    }));
+    await EventInvitation.bulkWrite(invitationDocs, { ordered: false });
 
     res.status(201).json(event);
   } catch (err) {
@@ -257,11 +286,10 @@ export const updateEvent = async (req, res) => {
       'school',
       'department',
       'invitationMode',
-      'allowSelfCheckIn',
       'category',
       'eventFormat',
       'deliveryMode',
-      'sdg', // Add sdg to editable fields
+      'sdg',
     ];
 
     let requiresReapproval = false;
@@ -274,14 +302,6 @@ export const updateEvent = async (req, res) => {
           requiresReapproval = true;
         }
         event.invitationMode = nextMode;
-        continue;
-      }
-      if (field === 'allowSelfCheckIn') {
-        const nextValue = req.body.allowSelfCheckIn !== false;
-        if (event.allowSelfCheckIn !== nextValue) {
-          requiresReapproval = true;
-        }
-        event.allowSelfCheckIn = nextValue;
         continue;
       }
       if (event[field] !== req.body[field]) {

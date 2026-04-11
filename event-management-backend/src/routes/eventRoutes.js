@@ -51,14 +51,14 @@ router.post('/invitations/:invitationId/respond',
 router.get('/', getAllEvents);
 
 // Create/update/delete managed events
-router.post('/', authMiddleware, roleMiddleware(deanRoles), createEvent);
+router.post('/', authMiddleware, roleMiddleware([...deanRoles, 'coordinator']), createEvent);
 router.get('/:id',
   param('id').isMongoId().withMessage('Invalid event id'),
   validate,
   getEventById
 );
-router.put('/:id', authMiddleware, roleMiddleware(deanRoles), updateEvent);
-router.delete('/:id', authMiddleware, roleMiddleware(deanRoles), deleteEvent);
+router.put('/:id', authMiddleware, roleMiddleware([...deanRoles, 'coordinator']), updateEvent);
+router.delete('/:id', authMiddleware, roleMiddleware([...deanRoles, 'coordinator']), deleteEvent);
 
 router.post('/:id/approval',
   authMiddleware,

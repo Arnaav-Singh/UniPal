@@ -17,7 +17,6 @@ import eventRoutes from "./routes/eventRoutes.js";
 import feedbackRoutes from "./routes/feedbackRoutes.js";
 import superadminRoutes from "./routes/superadminRoutes.js";
 import facultyRoutes from './routes/facultyRoutes.js';
-import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 
@@ -59,6 +58,13 @@ const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true); // allow non-browser and same-origin
     if (allowedOrigins.includes(origin)) return callback(null, true);
+
+    // Dynamic check for local network addresses (192.168.x.x, 10.x.x.x, 172.x.x.x)
+    // This allows accessing the app from other devices on the same network
+    if (/^http:\/\/(192\.168\.|172\.|10\.|localhost).*/.test(origin)) {
+      return callback(null, true);
+    }
+
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
@@ -80,7 +86,9 @@ app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
 
 // Logging
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+// Logging - Enhanced to show request source (IP and Origin)
+morgan.token('remote-origin', (req) => (req.headers && req.headers.origin) ? req.headers.origin : 'Unknown');
+app.use(morgan(':method :url :status :response-time ms - IP: :remote-addr | Origin: :remote-origin'));
 
 // Security
 app.use(helmet());           // sets various security headers [3]
@@ -145,7 +153,6 @@ app.use('/api/events', eventRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/notification', notificationRoutes);
 app.use('/api/faculty', facultyRoutes);
-app.use('/api/google', googleAuthRoutes);
 app.use('/api/reports', reportRoutes);
 
 // SPA or 404 fallback LAST

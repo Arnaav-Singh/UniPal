@@ -1,4 +1,4 @@
-// Registration experience with role-based metadata capture.
+// Registration experience with staff-category-based role assignment.
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,16 +11,21 @@ import { useToast } from '@/hooks/use-toast';
 import { Calendar, UserPlus, ArrowLeft } from 'lucide-react';
 import { DEFAULT_SCHOOL, getAllSchools, getBranchesForSchool } from '@/lib/schools';
 
-type SignUpRole = 'student' | 'coordinator' | 'dean';
+type StaffCategory = 'teaching' | 'non-teaching' | 'student';
+type SignUpRole = 'coordinator' | 'dean';
 
 interface SignUpFormState {
   name: string;
   email: string;
   password: string;
   confirmPassword: string;
+  staffCategory: StaffCategory;
   role: SignUpRole;
   school: string;
   department: string;
+  registrationId: string;
+  section: string;
+  semester: string;
 }
 
 export default function SignUp() {
@@ -32,9 +37,13 @@ export default function SignUp() {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'student',
+    staffCategory: 'student',
+    role: 'coordinator',
     school: initialSchool,
     department: initialDepartment,
+    registrationId: '',
+    section: '',
+    semester: '',
   });
   const [loading, setLoading] = useState(false);
   const schoolOptions = useMemo(() => getAllSchools(), []);
@@ -53,6 +62,17 @@ export default function SignUp() {
       }));
     }
   }, [branchOptions, formData.department]);
+
+  // Derive the actual role that will be submitted based on staff category
+  const resolvedRole = useMemo(() => {
+    if (formData.staffCategory === 'student') return 'student';
+    if (formData.staffCategory === 'non-teaching') return 'coordinator';
+    // teaching — use the explicitly selected role
+    return formData.role;
+  }, [formData.staffCategory, formData.role]);
+
+  // Whether the role selector should be shown
+  const showRoleSelector = formData.staffCategory === 'teaching';
 
   // Perform validation before delegating to AuthContext.register.
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,14 +110,31 @@ export default function SignUp() {
       return;
     }
 
+    // Student-specific validation
+    if (formData.staffCategory === 'student') {
+      if (!formData.registrationId.trim()) {
+        toast({
+          title: "Registration Number Required",
+          description: "Please enter your registration number to continue.",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       await register({
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        role: formData.role,
+        role: resolvedRole as 'student' | 'coordinator' | 'dean',
         school: formData.school,
         department: formData.department,
+        staffCategory: formData.staffCategory,
+        registrationId: formData.staffCategory === 'student' ? formData.registrationId.trim() : undefined,
+        section: formData.staffCategory === 'student' && formData.section.trim() ? formData.section.trim() : undefined,
+        semester: formData.staffCategory === 'student' && formData.semester ? Number(formData.semester) : undefined,
       });
       toast({
         title: "Account Created!",
@@ -125,6 +162,9 @@ export default function SignUp() {
           school: value,
           department: nextBranches[0] ?? '',
         };
+      }
+      if (field === 'staffCategory') {
+        return { ...prev, staffCategory: value as StaffCategory };
       }
       if (field === 'role') {
         return { ...prev, role: value as SignUpRole };
@@ -194,18 +234,39 @@ export default function SignUp() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="role">Account Type</Label>
-                <Select value={formData.role} onValueChange={(value: SignUpRole) => handleInputChange('role', value)}>
+                <Label htmlFor="staffCategory">I am a</Label>
+                <Select value={formData.staffCategory} onValueChange={(value: StaffCategory) => handleInputChange('staffCategory', value)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
+                    <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="student">Student</SelectItem>
-                    <SelectItem value="coordinator">Coordinator</SelectItem>
-                    <SelectItem value="dean">Dean</SelectItem>
+                    <SelectItem value="teaching">Teaching Staff</SelectItem>
+                    <SelectItem value="non-teaching">Non-Teaching Staff</SelectItem>
                   </SelectContent>
                 </Select>
+                {formData.staffCategory === 'non-teaching' && (
+                  <p className="text-xs text-muted-foreground">You will be assigned the Coordinator role automatically.</p>
+                )}
+                {formData.staffCategory === 'student' && (
+                  <p className="text-xs text-muted-foreground">You will be assigned the Student role automatically.</p>
+                )}
               </div>
+
+              {showRoleSelector && (
+                <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={formData.role} onValueChange={(value: SignUpRole) => handleInputChange('role', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="coordinator">Coordinator</SelectItem>
+                      <SelectItem value="dean">Dean</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="school">Institute</Label>
@@ -238,6 +299,47 @@ export default function SignUp() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {formData.staffCategory === 'student' && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="registrationId">Registration Number *</Label>
+                    <Input
+                      id="registrationId"
+                      type="text"
+                      value={formData.registrationId}
+                      onChange={(e) => handleInputChange('registrationId', e.target.value)}
+                      placeholder="e.g. 210905123"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="section">Section</Label>
+                      <Input
+                        id="section"
+                        type="text"
+                        value={formData.section}
+                        onChange={(e) => handleInputChange('section', e.target.value)}
+                        placeholder="e.g. A"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="semester">Semester</Label>
+                      <Select value={formData.semester} onValueChange={(value) => handleInputChange('semester', value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,4,5,6,7,8].map((s) => (
+                            <SelectItem key={s} value={String(s)}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>

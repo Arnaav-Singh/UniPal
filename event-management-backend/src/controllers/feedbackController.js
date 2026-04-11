@@ -5,7 +5,7 @@ import Event from '../models/Event.js';
 // Persist a feedback entry after confirming the attendee was present.
 export const submitFeedback = async (req, res) => {
   try {
-    const { rating, comments, code } = req.body;
+    const { rating, comments, code, isAnonymous } = req.body;
     const event = await Event.findById(req.params.eventId);
     if (!event) return res.status(404).json({ message: 'Event not found' });
 
@@ -28,17 +28,19 @@ export const submitFeedback = async (req, res) => {
       return res.status(403).json({ message: 'Feedback allowed after attending the event' });
     }
 
-    // Check if feedback already submitted
-    const existingFeedback = await Feedback.findOne({
-      event: req.params.eventId,
-      user: req.user._id,
-    });
-    if (existingFeedback) {
-      return res.status(400).json({ message: 'Feedback already submitted for this event' });
+    // Prevent duplicate non-anonymous feedback
+    if (!isAnonymous) {
+      const existingFeedback = await Feedback.findOne({
+        event: req.params.eventId,
+        user: req.user._id,
+      });
+      if (existingFeedback) {
+        return res.status(400).json({ message: 'Feedback already submitted for this event' });
+      }
     }
 
     const feedback = await Feedback.create({
-      user: req.user._id,
+      user: isAnonymous ? undefined : req.user._id,
       event: req.params.eventId,
       rating,
       comments,

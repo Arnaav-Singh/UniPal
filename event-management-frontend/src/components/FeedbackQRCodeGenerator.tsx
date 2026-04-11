@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback } from 'react';
 import QRCode from 'qrcode';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Download, Copy, Check, RefreshCcw, Timer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
@@ -19,6 +21,7 @@ export function FeedbackQRCodeGenerator({ eventId, eventTitle }: FeedbackQRCodeG
   const [loading, setLoading] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [code, setCode] = useState<string>('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const { toast } = useToast();
 
   // Request a fresh feedback code and render it to a QR image.
@@ -28,7 +31,7 @@ export function FeedbackQRCodeGenerator({ eventId, eventTitle }: FeedbackQRCodeG
       const { code, expiresAt } = await apiService.requestFeedbackCode(eventId);
       setCode(code);
       setExpiresAt(expiresAt);
-      const urlForQr = await apiService.generateFeedbackQRCode(eventId, code);
+      const urlForQr = await apiService.generateFeedbackQRCode(eventId, code, isAnonymous);
       setFeedbackUrl(urlForQr);
       const url = await QRCode.toDataURL(urlForQr, {
         width: 300,
@@ -49,11 +52,11 @@ export function FeedbackQRCodeGenerator({ eventId, eventTitle }: FeedbackQRCodeG
     } finally {
       setLoading(false);
     }
-  }, [eventId, toast]);
+  }, [eventId, isAnonymous, toast]);
 
   useEffect(() => {
     generateQRCode();
-  }, [eventId, generateQRCode]);
+  }, [eventId, isAnonymous, generateQRCode]);
 
   const downloadQRCode = () => {
     const link = document.createElement('a');
@@ -95,6 +98,12 @@ export function FeedbackQRCodeGenerator({ eventId, eventTitle }: FeedbackQRCodeG
         <CardTitle className="text-center">Feedback QR Code for {eventTitle}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col items-center space-y-4">
+        
+        <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border text-sm w-full justify-center">
+          <Switch id="anonymous-mode" checked={isAnonymous} onCheckedChange={setIsAnonymous} />
+          <Label htmlFor="anonymous-mode" className="cursor-pointer font-medium">Accept Anonymous Feedback</Label>
+        </div>
+
         {qrCodeUrl && (
           <div className="bg-white p-4 rounded-lg shadow-inner">
             <img src={qrCodeUrl} alt="Feedback QR Code" className="w-64 h-64" />

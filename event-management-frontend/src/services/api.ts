@@ -24,9 +24,23 @@ import {
 	EventOverview,
 } from '@/types';
 
-const API_BASE_URL =
+let API_BASE_URL =
 	(import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL?.replace(/\/+$/, '') ||
-	'http://localhost:5050';
+	(typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5050` : 'http://localhost:5050');
+
+// Force usage of dynamic IP if we are on a network address (not localhost) 
+// and the configured API URL points to localhost (which is wrong for remote devices).
+if (typeof window !== 'undefined') {
+	const currentHost = window.location.hostname;
+	const isLocal = currentHost === 'localhost' || currentHost === '127.0.0.1';
+	const configuredUrl = API_BASE_URL; // currently resolved value
+
+	if (!isLocal && (configuredUrl.includes('localhost') || configuredUrl.includes('127.0.0.1'))) {
+		// We are on a real IP (e.g. 172.x), but config uses localhost. Override it.
+		API_BASE_URL = `${window.location.protocol}//${currentHost}:5050`;
+		console.log('Detected remote access, overriding API URL to:', API_BASE_URL);
+	}
+}
 
 // Pull the persisted JWT used for authenticated requests.
 function getAuthToken(): string | null {
@@ -123,6 +137,8 @@ function mapUser(bu: BackendUser): User {
 		school: bu.school,
 		department: bu.department,
 		designation: bu.designation,
+		section: bu.section,
+		semester: bu.semester,
 	};
 }
 
@@ -179,19 +195,26 @@ function mapEvent(be: BackendEvent): Event {
 	const approvedByName = typeof be.approvedBy === 'string'
 		? undefined
 		: be.approvedBy?.name;
+	const createdById = typeof be.createdBy === 'string'
+		? be.createdBy
+		: be.createdBy?._id || be.createdBy?.id || undefined;
+	const createdByName = typeof be.createdBy === 'string'
+		? undefined
+		: be.createdBy?.name;
 
 	return {
 		id: be._id || be.id || be.eventID,
 		title: be.title || be.name || 'Untitled Event',
 		description: be.description || '',
 		date: be.date,
+		startDate: be.startDate,
+		endDate: be.endDate,
 		time: be.time,
 		location: be.location,
 		school: be.school,
 		department: be.department,
 		status: be.status || 'scheduled',
 		invitation_mode: be.invitationMode || 'invite-only',
-		allow_self_check_in: be.allowSelfCheckIn ?? true,
 		category: be.category || 'other',
 		event_format: be.eventFormat || 'other',
 		delivery_mode: be.deliveryMode || 'in-person',
@@ -208,12 +231,15 @@ function mapEvent(be: BackendEvent): Event {
 		approved_by: approvedById,
 		approved_by_name: approvedByName,
 		feedback_open: be.feedbackOpen ?? false,
+		attendance_closed: be.attendanceClosed ?? false,
 		coordinators: coordinatorIds,
 		coordinator_names: coordinatorNames,
 		assigned_coordinator: coordinatorIds[0] || '',
 		qr_code: be.qr_code,
 		google_form_url: be.google_form_url,
 		created_at: be.createdAt || new Date().toISOString(),
+		created_by: createdById,
+		created_by_name: createdByName,
 		agenda: Array.isArray(be.agenda)
 			? be.agenda.map((item) => ({
 				title: item?.title,
@@ -284,7 +310,7 @@ function mapInvitation(invitation: BackendInvitation): EventInvitation {
 	};
 }
 
-function mapAttendanceRecord(raw: { userId: string; registrationId?: string; name: string; email: string; signature?: string | null; timestamp?: string | null; school?: string; department?: string; }): AttendanceRecord {
+function mapAttendanceRecord(raw: { userId: string; registrationId?: string; name: string; email: string; signature?: string | null; timestamp?: string | null; dayDate?: string | null; school?: string; department?: string; }): AttendanceRecord {
 	return {
 		user_id: raw.userId,
 		registration_id: raw.registrationId,
@@ -292,6 +318,7 @@ function mapAttendanceRecord(raw: { userId: string; registrationId?: string; nam
 		email: raw.email,
 		signature: raw.signature ?? null,
 		timestamp: raw.timestamp ?? null,
+		day_date: raw.dayDate ?? null,
 		school: raw.school,
 		department: raw.department,
 	};
@@ -371,7 +398,7 @@ class APIService {
 		return { user, token };
 	}
 
-	async register(userData: { name: string; email: string; password: string; role: 'dean' | 'admin' | 'coordinator' | 'student' | 'superadmin'; school?: string; department?: string; designation?: string; }): Promise<AuthUser> {
+	async register(userData: { name: string; email: string; password: string; role: 'dean' | 'admin' | 'coordinator' | 'student' | 'superadmin'; school?: string; department?: string; designation?: string; staffCategory?: string; registrationId?: string; section?: string; semester?: number; }): Promise<AuthUser> {
 		const payload = {
 			name: userData.name,
 			email: userData.email,
@@ -380,6 +407,10 @@ class APIService {
 			school: userData.school,
 			department: userData.department,
 			designation: userData.designation,
+			staffCategory: userData.staffCategory,
+			registrationId: userData.registrationId,
+			section: userData.section,
+			semester: userData.semester,
 		};
 		const data = await http<BackendAuthResponse>('/api/auth/register', {
 			method: 'POST',
@@ -501,7 +532,10 @@ class APIService {
 
 	async getEventsByCoordinator(coordinatorId: string): Promise<Event[]> {
 		const all = await this.getEvents();
-		return all.filter((event) => event.coordinators.includes(coordinatorId));
+		return all.filter((event) => 
+			event.coordinators.includes(coordinatorId) || 
+			event.created_by === coordinatorId
+		);
 	}
 
 	async deleteUser(userId: string, password: string): Promise<void> {
@@ -516,14 +550,14 @@ class APIService {
 		title: string;
 		description: string;
 		date: string;
+		time?: string;
 		startDate?: string;
 		endDate?: string;
 		location: string;
 		school?: string;
 		department?: string;
 		invitation_mode?: 'open' | 'invite-only';
-		allow_self_check_in?: boolean;
-		coordinator_ids?: string[];
+		coordinatorIds?: string[];
 		google_form_url?: string;
 		category?: string;
 		event_format?: string;
@@ -542,14 +576,14 @@ class APIService {
 			name: eventData.title,
 			description: eventData.description,
 			date: eventData.date,
+			time: eventData.time,
 			startDate: eventData.startDate,
 			endDate: eventData.endDate,
 			location: eventData.location,
 			school: eventData.school,
 			department: eventData.department,
 			invitationMode: eventData.invitation_mode,
-			allowSelfCheckIn: eventData.allow_self_check_in,
-			coordinatorIds: eventData.coordinator_ids,
+			coordinatorIds: eventData.coordinatorIds,
 			google_form_url: eventData.google_form_url,
 			category: eventData.category,
 			eventFormat: eventData.event_format,
@@ -583,7 +617,6 @@ class APIService {
 		school?: string;
 		department?: string;
 		invitation_mode?: 'open' | 'invite-only';
-		allow_self_check_in?: boolean;
 		category?: string;
 		event_format?: string;
 		delivery_mode?: 'in-person' | 'online' | 'hybrid';
@@ -594,6 +627,7 @@ class APIService {
 		important_contacts?: EventContact[];
 		sdg?: string[];
 		guest_speakers?: string[];
+		coordinator_ids?: string[];
 	}): Promise<Event> {
 		const payload = {
 			title: eventData.title,
@@ -610,7 +644,6 @@ class APIService {
 			eventFormat: eventData.event_format,
 			deliveryMode: eventData.delivery_mode,
 			invitationMode: eventData.invitation_mode,
-			allowSelfCheckIn: eventData.allow_self_check_in,
 			tags: eventData.tags,
 			sponsors: eventData.sponsors,
 			budget: eventData.budget,
@@ -618,6 +651,7 @@ class APIService {
 			importantContacts: mapContactsToBackend(eventData.important_contacts),
 			sdg: eventData.sdg,
 			guestSpeakers: eventData.guest_speakers,
+			coordinatorIds: eventData.coordinator_ids,
 		};
 		const created = await http<BackendEvent>('/api/coordinators/events', {
 			method: 'POST',
@@ -632,12 +666,13 @@ class APIService {
 		if (updates.title) payload.name = updates.title;
 		if (typeof updates.description === 'string') payload.description = updates.description;
 		if (updates.date) payload.date = updates.date;
+		if (updates.startDate) payload.startDate = updates.startDate;
+		if (updates.endDate) payload.endDate = updates.endDate;
 		if (updates.location) payload.location = updates.location;
 		if (updates.school) payload.school = updates.school;
 		if (updates.department) payload.department = updates.department;
 		if (updates.status) payload.status = updates.status;
 		if (updates.invitation_mode) payload.invitationMode = updates.invitation_mode;
-		if (typeof updates.allow_self_check_in === 'boolean') payload.allowSelfCheckIn = updates.allow_self_check_in;
 		if (Array.isArray(updates.coordinators)) payload.coordinatorIds = updates.coordinators;
 		if (updates.category) payload.category = updates.category;
 		if (updates.event_format) payload.eventFormat = updates.event_format;
@@ -650,6 +685,7 @@ class APIService {
 		if (typeof updates.requires_approval === 'boolean') payload.requiresApproval = updates.requires_approval;
 		if (typeof updates.approval_notes === 'string') payload.approvalNotes = updates.approval_notes;
 		if (Array.isArray(updates.sdg)) payload.sdg = updates.sdg; // Send sdg update
+		if (typeof updates.attendance_closed === 'boolean') payload.attendanceClosed = updates.attendance_closed;
 
 		const data = await http<BackendEvent>(`/api/events/${id}`, {
 			method: 'PUT',
@@ -657,6 +693,18 @@ class APIService {
 			body: JSON.stringify(payload),
 		});
 		return mapEvent(data);
+	}
+
+	async cancelEvent(id: string): Promise<Event | null> {
+		return this.updateEvent(id, { status: 'cancelled' } as Partial<Event>);
+	}
+
+	async closeAttendance(id: string): Promise<Event | null> {
+		return this.updateEvent(id, { attendance_closed: true } as Partial<Event>);
+	}
+
+	async reopenAttendance(id: string): Promise<Event | null> {
+		return this.updateEvent(id, { attendance_closed: false } as Partial<Event>);
 	}
 
 	async deleteEvent(id: string): Promise<boolean> {
@@ -804,10 +852,11 @@ class APIService {
 		return { attendance: [], events };
 	}
 
-	async requestAttendanceCode(eventId: string): Promise<{ code: string; expiresAt: string; }> {
-		const data = await http<{ code: string; expiresAt: string; }>(`/api/events/${eventId}/attendance/code`, {
+	async requestAttendanceCode(eventId: string, dayDate?: string): Promise<{ code: string; expiresAt: string; dayDate?: string | null; }> {
+		const data = await http<{ code: string; expiresAt: string; dayDate?: string | null; }>(`/api/events/${eventId}/attendance/code`, {
 			method: 'POST',
 			headers: { ...authHeaders() },
+			body: JSON.stringify({ dayDate }),
 		});
 		return data;
 	}
@@ -828,7 +877,7 @@ class APIService {
 		return (data || []).map(mapFeedback);
 	}
 
-	async submitFeedback(feedbackData: { event_id: string; rating: number; comments: string; code?: string; }): Promise<Feedback> {
+	async submitFeedback(feedbackData: { event_id: string; rating: number; comments: string; code?: string; isAnonymous?: boolean; }): Promise<Feedback> {
 		const data = await http<BackendFeedback>(`/api/feedback/${feedbackData.event_id}`, {
 			method: 'POST',
 			headers: { ...authHeaders() },
@@ -836,6 +885,7 @@ class APIService {
 				rating: feedbackData.rating,
 				comments: feedbackData.comments,
 				code: feedbackData.code,
+				isAnonymous: feedbackData.isAnonymous,
 			}),
 		});
 		return mapFeedback(data);
@@ -849,8 +899,13 @@ class APIService {
 		return data;
 	}
 
-	async generateFeedbackQRCode(eventId: string, code?: string): Promise<string> {
-		const qrCodeUrl = `${window.location.origin}/feedback/${eventId}${code ? `?code=${code}` : ''}`;
+	async generateFeedbackQRCode(eventId: string, code?: string, isAnonymous?: boolean): Promise<string> {
+		const params = new URLSearchParams();
+		if (code) params.append('code', code);
+		if (isAnonymous) params.append('anonymous', 'true');
+		
+		const queryString = params.toString();
+		const qrCodeUrl = `${window.location.origin}/feedback/${eventId}${queryString ? `?${queryString}` : ''}`;
 		return qrCodeUrl;
 	}
 

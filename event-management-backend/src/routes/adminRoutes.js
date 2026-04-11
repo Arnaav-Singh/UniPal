@@ -7,7 +7,7 @@ import roleMiddleware from '../middleware/roleMiddleware.js';
 
 const deanRoles = ['dean', 'superadmin'];
 
-router.get('/users', authMiddleware, roleMiddleware(deanRoles), getUsers);
+router.get('/users', authMiddleware, roleMiddleware([...deanRoles, 'coordinator']), getUsers);
 router.post('/users', authMiddleware, roleMiddleware(deanRoles), createUser);
 router.delete('/users/:id', authMiddleware, roleMiddleware(deanRoles), deleteUser);
 router.get('/events', authMiddleware, roleMiddleware(deanRoles), getAllEvents);

@@ -23,7 +23,7 @@ export const generateEventReport = async (req, res) => {
         const event = await Event.findById(req.params.id)
             .populate('attendees')
             .populate('coordinators')
-            .populate('attendanceLog.user');
+            .populate('attendanceLog.user', 'name email role registrationId section semester');
 
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
@@ -206,37 +206,71 @@ export const generateEventReport = async (req, res) => {
             doc.fontSize(14).font('Helvetica-Bold').text('Attendance List', { align: 'center', underline: true });
             doc.moveDown();
 
-            // Table Header
+            // Group attendance by dayDate for multi-day events
+            const byDay = new Map();
+            event.attendanceLog.forEach((entry) => {
+                const day = entry.dayDate || 'all';
+                if (!byDay.has(day)) byDay.set(day, []);
+                byDay.get(day).push(entry);
+            });
+
+            const isMultiDay = byDay.size > 1 || (byDay.size === 1 && !byDay.has('all'));
+
             const drawTableHeader = () => {
                 const startY = doc.y;
                 doc.fontSize(12).font('Helvetica-Bold');
-                doc.text('Name', 50, startY, { width: 300 });
+                // Total width 500 (from X=50 to X=550)
+                doc.text('Name', 50, startY, { width: 140 });
+                doc.text('Reg No', 190, startY, { width: 80 });
+                doc.text('Sec', 270, startY, { width: 40 });
+                doc.text('Sem', 310, startY, { width: 40 });
                 doc.text('Check-in Time', 350, startY, { width: 200, align: 'right' });
-
                 doc.moveDown(0.5);
                 doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
                 doc.moveDown(0.5);
                 doc.font('Helvetica').fontSize(11);
             };
 
-            drawTableHeader();
-
-            event.attendanceLog.forEach((entry) => {
-                if (doc.y > 750) { // Check for end of page
-                    doc.addPage();
-                    doc.fontSize(14).font('Helvetica-Bold').text('Attendance List (Cont.)', { align: 'center', underline: true });
-                    doc.moveDown();
-                    drawTableHeader();
+            for (const [day, entries] of byDay) {
+                if (isMultiDay) {
+                    if (doc.y > 680) {
+                        doc.addPage();
+                    }
+                    doc.fontSize(12).font('Helvetica-Bold').text(`Date: ${day}`, { underline: true });
+                    doc.moveDown(0.5);
                 }
 
-                const name = entry.user ? entry.user.name : 'Unknown User';
-                const time = entry.capturedAt ? new Date(entry.capturedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A';
+                drawTableHeader();
 
-                const rowY = doc.y;
-                doc.text(name, 50, rowY, { width: 300 });
-                doc.text(time, 350, rowY, { width: 200, align: 'right' });
-                doc.moveDown(0.5);
-            });
+                entries.forEach((entry) => {
+                    if (doc.y > 750) {
+                        doc.addPage();
+                        if (isMultiDay) {
+                            doc.fontSize(14).font('Helvetica-Bold').text(`Attendance – ${day} (Cont.)`, { align: 'center', underline: true });
+                        } else {
+                            doc.fontSize(14).font('Helvetica-Bold').text('Attendance List (Cont.)', { align: 'center', underline: true });
+                        }
+                        doc.moveDown();
+                        drawTableHeader();
+                    }
+
+                    const name = entry.user ? entry.user.name : 'Unknown User';
+                    const regNo = (entry.user && entry.user.registrationId) ? entry.user.registrationId : '-';
+                    const section = (entry.user && entry.user.section) ? entry.user.section : '-';
+                    const semester = (entry.user && entry.user.semester) ? entry.user.semester.toString() : '-';
+                    const time = entry.capturedAt ? new Date(entry.capturedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A';
+
+                    const rowY = doc.y;
+                    doc.text(name, 50, rowY, { width: 140 });
+                    doc.text(regNo, 190, rowY, { width: 80 });
+                    doc.text(section, 270, rowY, { width: 40 });
+                    doc.text(semester, 310, rowY, { width: 40 });
+                    doc.text(time, 350, rowY, { width: 200, align: 'right' });
+                    doc.moveDown(0.5);
+                });
+
+                if (isMultiDay) doc.moveDown();
+            }
         }
 
         // --- FEEDBACK LIST ---

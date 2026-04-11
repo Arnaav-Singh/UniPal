@@ -1,6 +1,6 @@
 // Login experience leveraging the shared auth context and toast feedback.
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,9 +15,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
-  // Authenticate and redirect users toward their dashboards.
+  // Determine where to go after login: saved destination or dashboard
+  const redirectTo = (location.state as { from?: string } | null)?.from || '/';
+
+  // Authenticate and redirect users toward their intended page or dashboard.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -28,8 +32,8 @@ export default function Login() {
         title: "Welcome!",
         description: "Successfully logged in to UniPal MIT."
       });
-      // Redirect to dashboard after successful login
-      navigate('/', { replace: true });
+      // Redirect to the intended page (attendance/feedback) or dashboard
+      navigate(redirectTo, { replace: true });
     } catch (error) {
       toast({
         title: "Login Failed",
@@ -53,9 +57,9 @@ export default function Login() {
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      navigate('/', { replace: true });
+      navigate(redirectTo, { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, navigate, redirectTo]);
 
   if (user) {
     return null;
@@ -81,6 +85,14 @@ export default function Login() {
             The event companion for MAHE's Manipal Institute of Technology
           </p>
         </div>
+
+        {redirectTo !== '/' && (
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="py-3 text-center text-sm text-blue-700">
+              Please sign in to continue to {redirectTo.startsWith('/attendance') ? 'attendance' : redirectTo.startsWith('/feedback') ? 'feedback' : 'the requested page'}.
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="hover:-translate-y-1 hover:shadow-glow">
           <CardHeader>

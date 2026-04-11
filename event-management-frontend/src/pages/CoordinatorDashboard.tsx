@@ -7,6 +7,7 @@ import { FeedbackQRCodeGenerator } from '@/components/FeedbackQRCodeGenerator';
 import { GoogleFormQRGenerator } from '@/components/GoogleFormQRGenerator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { EventCreationDialog } from '@/components/EventCreationDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -16,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
-import { CalendarDays, Users, QrCode, Plus, FileText, Sparkles, UserPlus, Loader2, Clock, Building2, GraduationCap, X, RefreshCcw, Download, Star, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { CalendarDays, Users, QrCode, Plus, FileText, Sparkles, UserPlus, Loader2, Clock, Building2, GraduationCap, X, Check, RefreshCcw, Download, Star, AlertTriangle, Trash2, Image as ImageIcon } from 'lucide-react';
 import { DirectoryMember, DirectorySchool, Event, EventInvitation, EventOverview, User, AttendanceRecord } from '@/types';
 import { apiService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,10 +47,10 @@ interface CoordinatorEventForm {
   school: string;
   department: string;
   invitation_mode: 'invite-only' | 'open';
-  allow_self_check_in: boolean;
   sdg: string[];
   guest_speakers: string;
   category: string;
+  isMultiDay: boolean;
 }
 
 type ParticipantAccountType = 'participant' | 'student' | 'attendee';
@@ -97,6 +98,8 @@ export default function CoordinatorDashboard() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteSummary, setInviteSummary] = useState<EventInvitation[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [myInvitations, setMyInvitations] = useState<EventInvitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(false);
   const formatLocalDateTime = useCallback((dateStr?: string, timeStr?: string) => {
     if (!dateStr) return '';
     const dateTime = timeStr ? `${dateStr}T${timeStr}` : `${dateStr}T00:00`;
@@ -105,22 +108,6 @@ export default function CoordinatorDashboard() {
     return parsed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }, []);
   const coordinatorSchool = user?.school || DEFAULT_SCHOOL;
-  const [createForm, setCreateForm] = useState<CoordinatorEventForm>({
-    title: '',
-    description: '',
-    date: '',
-    startDate: '',
-    endDate: '',
-    time: '',
-    location: '',
-    school: coordinatorSchool,
-    department: getBranchesForSchool(coordinatorSchool)[0] ?? '',
-    invitation_mode: 'open',
-    allow_self_check_in: true,
-    sdg: [],
-    guest_speakers: '',
-    category: 'other',
-  });
   const [createLoading, setCreateLoading] = useState(false);
   const [participantForm, setParticipantForm] = useState<ParticipantFormState>({
     name: '',
@@ -137,9 +124,9 @@ export default function CoordinatorDashboard() {
   const [selectedActiveEventId, setSelectedActiveEventId] = useState('');
   const schoolOptions = useMemo(() => getAllSchools(), []);
   const createBranchOptions = useMemo(() => {
-    const branches = getBranchesForSchool(createForm.school);
+    const branches = getBranchesForSchool(user?.school || DEFAULT_SCHOOL);
     return branches.length > 0 ? branches : ['General'];
-  }, [createForm.school]);
+  }, [user?.school]);
   const participantBranchOptions = useMemo(() => {
     const branches = getBranchesForSchool(participantForm.school);
     return branches.length > 0 ? branches : ['General'];
@@ -160,21 +147,27 @@ export default function CoordinatorDashboard() {
   const manualEmailCount = useMemo(() => inviteEmails.split(/[\n,;]+/).map((email) => email.trim()).filter(Boolean).length, [inviteEmails]);
   const pendingInviteCount = selectedDirectoryList.length + manualEmailCount;
 
-  // Fetch assigned events and high-level stats for the current coordinator.
   const loadData = useCallback(async () => {
     if (!user) return;
 
     try {
-      const [eventsData, statsData] = await Promise.all([
+      const [eventsData, statsData, invitationsData] = await Promise.all([
         apiService.getEventsByCoordinator(user.id),
-        apiService.getCoordinatorStats(user.id)
+        apiService.getCoordinatorStats(user.id),
+        apiService.getMyInvitations()
       ]);
       setAssignedEvents(eventsData);
       setStats(statsData);
+      setMyInvitations(invitationsData.filter(inv => inv.status === 'pending'));
     } catch (error) {
       console.error('Failed to load coordinator data:', error);
     }
   }, [user]);
+
+  // Success callback for the unified event creation dialog.
+  const handleCreateEventSuccess = useCallback(() => {
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     if (user) {
@@ -182,20 +175,6 @@ export default function CoordinatorDashboard() {
     }
   }, [user, loadData]);
 
-  useEffect(() => {
-    if (!user?.school) return;
-    setCreateForm((prev) => {
-      if (createDialogOpen || prev.title || prev.location) {
-        return prev;
-      }
-      const defaultDepartment = getBranchesForSchool(user.school)[0] ?? prev.department;
-      return {
-        ...prev,
-        school: user.school,
-        department: defaultDepartment,
-      };
-    });
-  }, [user?.school, createDialogOpen]);
 
   useEffect(() => {
     if (activeEvents.length > 0) {
@@ -293,7 +272,7 @@ export default function CoordinatorDashboard() {
     const emails = inviteEmails.split(/[\n,;]+/).map((email) => email.trim()).filter(Boolean);
     const directoryInvitees = selectedDirectoryList.map((member) => ({
       userId: member.id,
-      roleAtEvent: directoryRole === 'coordinator' ? 'coordinator' : 'attendee' as const,
+      roleAtEvent: (directoryRole === 'coordinator' ? 'coordinator' : 'attendee') as 'coordinator' | 'attendee',
       message: inviteMessage || undefined,
     }));
     const manualInvitees = emails.map((email) => ({
@@ -382,125 +361,6 @@ export default function CoordinatorDashboard() {
   }, []);
 
   // Normalise controlled form inputs for the event creation drawer.
-  const handleCreateFormChange = useCallback((field: keyof CoordinatorEventForm, value: string | boolean) => {
-    setCreateForm((prev) => {
-      if (field === 'school' && typeof value === 'string') {
-        const nextBranches = getBranchesForSchool(value);
-        return {
-          ...prev,
-          school: value,
-          department: nextBranches[0] ?? '',
-        };
-      }
-      if (field === 'allow_self_check_in' && typeof value === 'boolean') {
-        return { ...prev, allow_self_check_in: value };
-      }
-      if (field === 'invitation_mode' && typeof value === 'string') {
-        return { ...prev, invitation_mode: value as CoordinatorEventForm['invitation_mode'] };
-      }
-      return {
-        ...prev,
-        [field]: value,
-      } as CoordinatorEventForm;
-    });
-  }, []);
-
-  const handleSDGToggle = useCallback((goal: string) => {
-    setCreateForm((prev) => {
-      const current = prev.sdg || [];
-      const updated = current.includes(goal)
-        ? current.filter(g => g !== goal)
-        : [...current, goal];
-      return { ...prev, sdg: updated };
-    });
-  }, []);
-
-  // Mirror signup validations for the participant creation form.
-  const handleParticipantFormChange = useCallback((field: keyof ParticipantFormState, value: string) => {
-    setParticipantForm((prev) => {
-      if (field === 'school') {
-        const nextBranches = getBranchesForSchool(value);
-        return {
-          ...prev,
-          school: value,
-          department: nextBranches[0] ?? '',
-        };
-      }
-      if (field === 'accountType') {
-        return { ...prev, accountType: value as ParticipantAccountType };
-      }
-      return { ...prev, [field]: value };
-    });
-  }, []);
-
-  // Persist a new event draft and refresh the coordinator's assignments.
-  const handleCreateEvent = useCallback(async () => {
-    if (!createForm.title.trim() || !createForm.date || !createForm.time || !createForm.location.trim()) {
-      toast({
-        title: 'Missing details',
-        description: 'Please provide the event title, date, time, and location.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (!createForm.school || !createForm.department) {
-      toast({
-        title: 'Choose school and branch',
-        description: 'Select where this event belongs so students can find it.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setCreateLoading(true);
-    try {
-      await apiService.createCoordinatorEvent({
-        title: createForm.title.trim(),
-        description: createForm.description.trim(),
-        date: createForm.date,
-        startDate: createForm.startDate,
-        endDate: createForm.endDate,
-        time: createForm.time,
-        location: createForm.location.trim(),
-        school: createForm.school,
-        department: createForm.department,
-        invitation_mode: createForm.invitation_mode,
-        allow_self_check_in: createForm.allow_self_check_in,
-        sdg: createForm.sdg,
-        guest_speakers: createForm.guest_speakers.split('\n').filter(s => s.trim()),
-        category: createForm.category,
-      });
-      toast({
-        title: 'Event submitted for approval',
-        description: 'The dean will review your request shortly.',
-      });
-      setCreateDialogOpen(false);
-      setCreateForm((prev) => ({
-        ...prev,
-        title: '',
-        description: '',
-        date: '',
-        startDate: '',
-        endDate: '',
-        time: '',
-        location: '',
-        invitation_mode: 'open',
-        allow_self_check_in: true,
-        sdg: [],
-        guest_speakers: '',
-        category: 'other',
-      }));
-      loadData();
-    } catch (error) {
-      toast({
-        title: 'Unable to create event',
-        description: error instanceof Error ? error.message : 'Please try again later.',
-        variant: 'destructive',
-      });
-    } finally {
-      setCreateLoading(false);
-    }
-  }, [createForm, loadData, toast]);
 
   const fetchEventOverview = useCallback(async (eventId: string) => {
     setOverviewLoading(true);
@@ -563,6 +423,88 @@ export default function CoordinatorDashboard() {
       setEndEventLoading(false);
     }
   }, [selectedEvent, toast, loadData]);
+
+  const handleCancelEvent = useCallback(async (event: Event) => {
+    if (!window.confirm(`Are you sure you want to cancel "${event.title}"? This will stop attendance and hide the event.`)) return;
+    try {
+      await apiService.cancelEvent(event.id);
+      toast({
+        title: 'Event cancelled',
+        description: `"${event.title}" has been cancelled.`,
+      });
+      loadData();
+    } catch (error) {
+      toast({
+        title: 'Unable to cancel event',
+        description: error instanceof Error ? error.message : 'Please try again later.',
+        variant: 'destructive',
+      });
+    }
+  }, [toast, loadData]);
+
+  const handleDeleteEvent = useCallback(async (event: Event) => {
+    if (!window.confirm(`Permanently delete "${event.title}"? This cannot be undone.`)) return;
+    try {
+      await apiService.deleteEvent(event.id);
+      toast({
+        title: 'Event deleted',
+        description: `"${event.title}" has been permanently removed.`,
+      });
+      loadData();
+    } catch (error) {
+      toast({
+        title: 'Unable to delete event',
+        description: error instanceof Error ? error.message : 'Please try again later.',
+        variant: 'destructive',
+      });
+    }
+  }, [toast, loadData]);
+
+  const [closeAttendanceLoading, setCloseAttendanceLoading] = useState(false);
+
+  const handleCloseAttendance = useCallback(async () => {
+    if (!selectedEvent) return;
+    setCloseAttendanceLoading(true);
+    try {
+      await apiService.closeAttendance(selectedEvent.id);
+      toast({
+        title: 'Attendance closed',
+        description: 'Students can no longer mark attendance for this event.',
+      });
+      loadData();
+      fetchEventOverview(selectedEvent.id);
+    } catch (error) {
+      toast({
+        title: 'Unable to close attendance',
+        description: error instanceof Error ? error.message : 'Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCloseAttendanceLoading(false);
+    }
+  }, [selectedEvent, toast, loadData, fetchEventOverview]);
+
+  const handleReopenAttendance = useCallback(async () => {
+    if (!selectedEvent) return;
+    setCloseAttendanceLoading(true);
+    try {
+      await apiService.reopenAttendance(selectedEvent.id);
+      toast({
+        title: 'Attendance reopened',
+        description: 'Students can now mark attendance again.',
+      });
+      loadData();
+      fetchEventOverview(selectedEvent.id);
+    } catch (error) {
+      toast({
+        title: 'Unable to reopen attendance',
+        description: error instanceof Error ? error.message : 'Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCloseAttendanceLoading(false);
+    }
+  }, [selectedEvent, toast, loadData, fetchEventOverview]);
 
   const fileToBase64 = useCallback((file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -727,6 +669,26 @@ export default function CoordinatorDashboard() {
     }
   }, [activeEvents, fetchEventOverview, loadData, participantForm, selectedActiveEventId, selectedEvent, toast]);
 
+  const handleRespondToInvitation = useCallback(async (invitationId: string, status: 'accepted' | 'declined') => {
+    setInvitationsLoading(true);
+    try {
+      await apiService.respondToInvitation(invitationId, status);
+      toast({
+        title: status === 'accepted' ? 'Invitation accepted' : 'Invitation declined',
+        description: status === 'accepted' ? 'You are now a manager for this event.' : 'The invitation has been removed.',
+      });
+      loadData();
+    } catch (error) {
+      toast({
+        title: 'Error responding to invitation',
+        description: error instanceof Error ? error.message : 'Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }, [loadData, toast]);
+
   const statsDisplay = [
     { label: 'Assigned Events', value: stats.assignedEvents, icon: CalendarDays, color: 'bg-primary' },
     { label: 'Total Attendees', value: stats.totalAttendees, icon: Users, color: 'bg-success' },
@@ -803,342 +765,249 @@ export default function CoordinatorDashboard() {
   return (
     <Layout title="Coordinator Dashboard">
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Coordinator Dashboard</h1>
-          <p className="text-muted-foreground">Manage your assigned events</p>
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Coordinator Dashboard</h1>
+            <p className="text-muted-foreground">Manage your assigned events</p>
+          </div>
+          <Button className="gap-2 self-start" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Create Event
+          </Button>
+        </div>
+
+        {/* Hero banner with stats */}
+        <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8" style={{ background: 'var(--gradient-primary)' }}>
+          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-white space-y-1">
+              <p className="text-sm font-medium opacity-80 uppercase tracking-wider">Your workspace</p>
+              <h2 className="text-2xl sm:text-3xl font-bold">{user?.name?.split(' ')[0] ?? 'Coordinator'}</h2>
+              <p className="text-sm opacity-75">{user?.school || 'UniPal MIT'}{user?.department ? ' · ' + user.department : ''}</p>
+            </div>
+            <div className="flex gap-6 text-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold">{stats.assignedEvents}</p>
+                <p className="text-xs opacity-75 mt-1">Assigned</p>
+              </div>
+              <div className="w-px bg-white/20" />
+              <div className="text-center">
+                <p className="text-3xl font-bold">{activeEvents.length}</p>
+                <p className="text-xs opacity-75 mt-1">Active</p>
+              </div>
+              <div className="w-px bg-white/20" />
+              <div className="text-center">
+                <p className="text-3xl font-bold">{assignedEvents.filter(e => e.approval_status !== 'approved').length}</p>
+                <p className="text-xs opacity-75 mt-1">Pending</p>
+              </div>
+            </div>
+          </div>
+          <div className="absolute -top-8 -right-8 w-48 h-48 rounded-full opacity-10" style={{ background: 'hsl(var(--university-gold))' }} />
+          <div className="absolute -bottom-12 -left-8 w-56 h-56 rounded-full opacity-10" style={{ background: 'hsl(var(--primary))' }} />
         </div>
 
         {assignedEvents.some((event) => event.approval_status !== 'approved') && (
-          <Card className="border-warning/40 bg-warning/10">
-            <CardContent className="py-4 flex flex-col gap-3 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
-              <div className="space-y-1">
-                <p className="font-semibold text-warning-foreground">Approval in progress</p>
-                <p className="text-sm text-muted-foreground">
-                  QR codes and attendance tools unlock once the dean team approves your event.
-                </p>
-              </div>
-              <Badge variant="outline" className="mx-auto uppercase tracking-wide sm:mx-0">
-                {assignedEvents.filter((event) => event.approval_status !== 'approved').length} pending
-              </Badge>
-            </CardContent>
-          </Card>
+          <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3">
+            <Clock className="h-4 w-4 text-warning-foreground shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-warning-foreground">Approval in progress</p>
+              <p className="text-xs text-muted-foreground">QR codes and attendance tools unlock once the dean team approves your event.</p>
+            </div>
+            <Badge variant="outline" className="uppercase tracking-wide shrink-0">
+              {assignedEvents.filter((event) => event.approval_status !== 'approved').length} pending
+            </Badge>
+          </div>
         )}
 
-        {/* Create New Participant Account Section Removed */}
-
-        {/* Google Form CTA Section */}
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-          <CardContent className="p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-col gap-4 text-center sm:flex-row sm:items-center sm:text-left">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto sm:mx-0">
-                  <FileText className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-blue-900">Create Interactive Events</h3>
-                  <p className="text-blue-700 text-sm">
-                    Generate QR codes for Google Forms to collect feedback and registrations from attendees
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-
-                <Button
-                  size="sm"
-                  className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto"
-                  onClick={() => setCreateDialogOpen(true)}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Event
-                </Button>
-              </div>
+        {/* Pending Invitations Section */}
+        {myInvitations.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                Pending Invitations
+              </h2>
+              <Badge className="bg-primary/20 text-primary border-primary/30">{myInvitations.length} new</Badge>
             </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {statsDisplay.map((stat) => (
-            <Card key={stat.label} className="bg-gradient-card shadow-card border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                    <stat.icon className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {myInvitations.map((inv) => (
+                <div key={inv.id} className="relative group rounded-2xl border bg-card transition-all hover:shadow-md overflow-hidden p-4">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-primary font-bold uppercase tracking-wider">Invitation Received</p>
+                        <h3 className="font-bold text-sm leading-tight group-hover:text-primary transition-colors">{inv.event_name || 'Event Invitation'}</h3>
+                      </div>
+                      <Badge variant="outline" className="capitalize text-[10px]">{inv.role_at_event}</Badge>
+                    </div>
+                    
+                    <div className="space-y-1.5 py-1 border-y border-dashed border-border/50">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        <span>Invitation from {inv.invited_by?.name || 'a colleague'}</span>
+                      </div>
+                      {inv.message && (
+                        <p className="text-[11px] italic text-muted-foreground line-clamp-2">"{inv.message}"</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2 pt-1">
+                      <Button 
+                        size="sm" 
+                        className="flex-1 h-9 gap-2 rounded-xl"
+                        onClick={() => handleRespondToInvitation(inv.id, 'accepted')}
+                        disabled={invitationsLoading}
+                      >
+                        {invitationsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        Accept
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="flex-1 h-9 gap-2 rounded-xl"
+                        onClick={() => handleRespondToInvitation(inv.id, 'declined')}
+                        disabled={invitationsLoading}
+                      >
+                        {invitationsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                        Decline
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
-            <CardTitle>Your Assigned Events</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {assignedEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onViewDetails={() => handleOpenEventDetails(event)}
-                  onGenerateQR={() => handleGenerateQR(event)}
-                  onGenerateGoogleFormQR={() => handleGenerateGoogleFormQR(event)}
-                  onViewAttendance={() => handleOpenEventDetails(event)}
-                  onManageInvites={() => openInviteDialog(event)}
-                />
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </section>
+        )}
 
-        <Dialog
-          open={createDialogOpen}
-          onOpenChange={(open) => {
-            setCreateDialogOpen(open);
-            if (!open) {
-              setCreateLoading(false);
-              setCreateForm((prev) => ({
-                ...prev,
-                title: '',
-                description: '',
-                date: '',
-                time: '',
-                location: '',
-                invitation_mode: 'open',
-                allow_self_check_in: true,
-                sdg: [],
-                guest_speakers: '',
-              }));
-            }
-          }}
-        >
-          <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create a new event</DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                Draft your event details and send them to the dean for approval.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="eventTitle">Event Title</Label>
-                  <Input
-                    id="eventTitle"
-                    value={createForm.title}
-                    onChange={(e) => handleCreateFormChange('title', e.target.value)}
-                    placeholder="AI & Emerging Tech Summit"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eventLocation">Location</Label>
-                  <Input
-                    id="eventLocation"
-                    value={createForm.location}
-                    onChange={(e) => handleCreateFormChange('location', e.target.value)}
-                    placeholder="Main Auditorium"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="eventType">Event Type</Label>
-                    <Select
-                      value={createForm.category}
-                      onValueChange={(value) => handleCreateFormChange('category', value)}
-                    >
-                      <SelectTrigger id="eventType">
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="seminar">Seminar</SelectItem>
-                        <SelectItem value="workshop">Workshop</SelectItem>
-                        <SelectItem value="competition">Competition</SelectItem>
-                        <SelectItem value="guest-lecture">Guest Lecture</SelectItem>
-                        <SelectItem value="hackathon">Hackathon</SelectItem>
-                        <SelectItem value="orientation">Orientation</SelectItem>
-                        <SelectItem value="cultural">Cultural</SelectItem>
-                        <SelectItem value="sports">Sports</SelectItem>
-                        <SelectItem value="department-meeting">Department Meeting</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="eventTime">Time</Label>
-                    <Input
-                      id="eventTime"
-                      type="time"
-                      value={createForm.time}
-                      onChange={(e) => handleCreateFormChange('time', e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
+        {/* Events list with per-event analytics */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Your Assigned Events</h2>
+            <Badge variant="secondary">{assignedEvents.filter(e => e.status !== 'cancelled').length} active</Badge>
+          </div>
 
-                {['hackathon', 'competition', 'cultural', 'sports'].includes(createForm.category) ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="startDate">Start Date</Label>
-                      <Input
-                        id="startDate"
-                        type="date"
-                        value={createForm.startDate}
-                        onChange={(e) => handleCreateFormChange('startDate', e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="endDate">End Date</Label>
-                      <Input
-                        id="endDate"
-                        type="date"
-                        value={createForm.endDate}
-                        onChange={(e) => handleCreateFormChange('endDate', e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="eventDate">Date</Label>
-                    <Input
-                      id="eventDate"
-                      type="date"
-                      value={createForm.date}
-                      onChange={(e) => handleCreateFormChange('date', e.target.value)}
-                      required
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="eventDescription">Description</Label>
-                <Textarea
-                  id="eventDescription"
-                  value={createForm.description}
-                  onChange={(e) => handleCreateFormChange('description', e.target.value)}
-                  placeholder="Share a short overview, agenda highlights, or special guests."
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Institute</Label>
-                  <Select value={createForm.school} onValueChange={(value) => handleCreateFormChange('school', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select institute" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {schoolOptions.map((school) => (
-                        <SelectItem key={school} value={school}>
-                          {school}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Branch / Department</Label>
-                  <Select value={createForm.department} onValueChange={(value) => handleCreateFormChange('department', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {createBranchOptions.map((branch) => (
-                        <SelectItem key={branch} value={branch}>
-                          {branch}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Sustainable Development Goals (SDGs)</Label>
-                <ScrollArea className="h-32 rounded-md border p-2">
-                  <div className="space-y-2">
-                    {SDG_GOALS.map((goal) => (
-                      <div key={goal} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={`sdg-${goal}`}
-                          checked={createForm.sdg?.includes(goal)}
-                          onChange={() => handleSDGToggle(goal)}
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                        />
-                        <label
-                          htmlFor={`sdg-${goal}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                          {goal}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="guestSpeakers">Guest Speakers</Label>
-                <Textarea
-                  id="guestSpeakers"
-                  value={createForm.guest_speakers}
-                  onChange={(e) => handleCreateFormChange('guest_speakers', e.target.value)}
-                  placeholder="Enter guest speakers (one per line)"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Invitation Mode</Label>
-                  <Select
-                    value={createForm.invitation_mode}
-                    onValueChange={(value: 'invite-only' | 'open') => handleCreateFormChange('invitation_mode', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="invite-only">Invite only</SelectItem>
-                      <SelectItem value="open">Open to all</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
-                    Allow self check-in
-                    <Switch
-                      checked={createForm.allow_self_check_in}
-                      onCheckedChange={(checked) => handleCreateFormChange('allow_self_check_in', checked)}
-                    />
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    When disabled, only coordinators can mark attendance for attendees.
-                  </p>
-                </div>
-              </div>
+          {assignedEvents.filter((e) => e.status !== 'cancelled').length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/30 py-16 text-center">
+              <CalendarDays className="h-10 w-10 text-muted-foreground/40 mb-3" />
+              <p className="font-medium text-muted-foreground">No active events assigned to you</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Create a new event to get started</p>
             </div>
-            <DialogFooter className="flex flex-col gap-2 sm:flex-row">
-              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)} className="w-full sm:w-auto">
-                Cancel
-              </Button>
-              <Button onClick={handleCreateEvent} disabled={createLoading} className="gap-2 w-full sm:w-auto">
-                {createLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                Submit for Approval
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          )}
+
+          <div className="space-y-3">
+            {assignedEvents.filter((e) => e.status !== 'cancelled').map((event) => {
+              const eventDate = new Date(event.date);
+              const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / 86400000);
+              const statusColors: Record<string, string> = {
+                ongoing: 'bg-success/10 text-success border-success/20',
+                scheduled: 'bg-primary/10 text-primary border-primary/20',
+                completed: 'bg-muted text-muted-foreground border-border',
+                draft: 'bg-warning/10 text-warning-foreground border-warning/20',
+              };
+              const approvalColors: Record<string, string> = {
+                approved: 'text-success',
+                pending: 'text-warning-foreground',
+                rejected: 'text-destructive',
+                draft: 'text-muted-foreground',
+              };
+              return (
+                <div key={event.id} className="rounded-2xl border bg-card shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                  <div className="h-1" style={{ background: event.status === 'ongoing' ? 'var(--gradient-accent)' : 'var(--gradient-primary)' }} />
+                  <div className="p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      {/* Left: Info */}
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold leading-tight">{event.title}</p>
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${statusColors[event.status] ?? 'bg-muted text-muted-foreground'}`}>
+                            {event.status}
+                          </span>
+                          {event.startDate && event.endDate && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent px-2 py-0.5 text-[11px] font-medium">
+                              <CalendarDays className="w-3 h-3" />
+                              Multi-day
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{event.location} · {event.category.replace(/-/g, ' ')}</p>
+                        {/* Per-event mini analytics row */}
+                        <div className="flex flex-wrap gap-3 pt-1">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              {event.startDate && event.endDate
+                                ? `${new Date(event.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${new Date(event.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                                : eventDate.toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              {event.attendance_closed ? 'Attendance closed' : daysUntil < 0 ? 'Event passed' : daysUntil === 0 ? 'Today' : `In ${daysUntil}d`}
+                            </span>
+                          </div>
+                          <div className={`flex items-center gap-1 text-xs font-medium ${approvalColors[event.approval_status] ?? 'text-muted-foreground'}`}>
+                            <span className="capitalize">{event.approval_status === 'approved' ? '✓ Approved' : event.approval_status === 'pending' ? '⏳ Pending approval' : event.approval_status === 'rejected' ? '✗ Rejected' : 'Draft'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {event.approval_status === 'approved' && event.status !== 'completed' && !event.attendance_closed && (
+                          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => handleGenerateQR(event)}>
+                            <QrCode className="w-3.5 h-3.5" />
+                            QR Code
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => handleOpenEventDetails(event)}>
+                          <Users className="w-3.5 h-3.5" />
+                          Attendance
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-xs text-orange-600" onClick={() => handleCancelEvent(event)} title="Cancel Event">
+                          <Clock className="w-3.5 h-3.5" />
+                          Cancel
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-xs text-destructive" onClick={() => handleDeleteEvent(event)} title="Delete Event">
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Show cancelled events in a collapsible section */}
+          {assignedEvents.some((e) => e.status === 'cancelled') && (
+            <details className="mt-6">
+              <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                Cancelled Events ({assignedEvents.filter((e) => e.status === 'cancelled').length})
+              </summary>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                {assignedEvents.filter((e) => e.status === 'cancelled').map((event) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    onViewDetails={() => handleOpenEventDetails(event)}
+                    onDeleteEvent={() => handleDeleteEvent(event)}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
+
+        <EventCreationDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          onSuccess={handleCreateEventSuccess}
+          userRole="coordinator"
+          userSchool={user?.school}
+          userDepartment={user?.department}
+        />
 
         {/* QR Code Dialog */}
         <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
@@ -1153,6 +1022,8 @@ export default function CoordinatorDashboard() {
               <QRCodeGenerator
                 eventId={selectedEvent.id}
                 eventTitle={selectedEvent.title}
+                startDate={selectedEvent.startDate}
+                endDate={selectedEvent.endDate}
               />
             )}
           </DialogContent>
@@ -1238,7 +1109,7 @@ export default function CoordinatorDashboard() {
                       <RefreshCcw className="h-4 w-4 mr-1" />
                       Refresh
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={() => handleGenerateQR(selectedEvent)}>
+                    <Button variant="secondary" size="sm" onClick={() => handleGenerateQR(selectedEvent)} disabled={selectedEvent.attendance_closed}>
                       <QrCode className="h-4 w-4 mr-1" />
                       Show Attendance QR
                     </Button>
@@ -1248,24 +1119,105 @@ export default function CoordinatorDashboard() {
                         Show Feedback QR
                       </Button>
                     )}
-                    {selectedEvent.status !== 'completed' && (
-                      <Button variant="destructive" size="sm" onClick={handleEndEvent} disabled={endEventLoading || overviewLoading}>
-                        {endEventLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        <AlertTriangle className="h-4 w-4 mr-1" />
-                        End Event
-                      </Button>
+                    {selectedEvent.status !== 'completed' && selectedEvent.status !== 'cancelled' && (
+                      <>
+                        {selectedEvent.attendance_closed ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleReopenAttendance}
+                            disabled={closeAttendanceLoading || overviewLoading}
+                            className="gap-1"
+                          >
+                            {closeAttendanceLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                            Reopen Attendance
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCloseAttendance}
+                            disabled={closeAttendanceLoading || overviewLoading}
+                            className="gap-1 text-orange-600 border-orange-300 hover:bg-orange-50"
+                          >
+                            {closeAttendanceLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                            Stop Attendance
+                          </Button>
+                        )}
+                        <Button variant="destructive" size="sm" onClick={handleEndEvent} disabled={endEventLoading || overviewLoading}>
+                          {endEventLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                          <AlertTriangle className="h-4 w-4 mr-1" />
+                          End Event
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
 
                 <Tabs value={workspaceTab} onValueChange={(value) => setWorkspaceTab(value as 'attendance' | 'feedback' | 'report')}>
-                  <TabsList className="grid w-full grid-cols-2 md:w-auto md:inline-flex">
+                  <TabsList className="grid w-full grid-cols-3 md:w-auto md:inline-flex">
                     <TabsTrigger value="attendance">Attendance</TabsTrigger>
+                    <TabsTrigger value="team">Team</TabsTrigger>
                     <TabsTrigger value="feedback">Feedback</TabsTrigger>
                     {selectedEvent.status === 'completed' && (
-                      <TabsTrigger value="report">Generate Report</TabsTrigger>
+                      <TabsTrigger value="report">Report</TabsTrigger>
                     )}
                   </TabsList>
+
+                  <TabsContent value="team" className="space-y-4">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center justify-between border-b pb-2">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-primary" />
+                          <h3 className="text-sm font-semibold uppercase tracking-wider">Current Team</h3>
+                        </div>
+                        <Badge variant="outline">{selectedEvent.coordinator_names.length} Managers</Badge>
+                      </div>
+
+                      <div className="grid gap-2">
+                        {/* Original Proposer */}
+                        <div className="flex items-center justify-between p-3 rounded-xl border bg-primary/5 border-primary/20">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-white">
+                              {(selectedEvent?.created_by_name || 'P').charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{selectedEvent?.created_by_name || 'Event Proposer'}</p>
+                              <p className="text-[10px] text-primary uppercase font-semibold">Original Proposer</p>
+                            </div>
+                          </div>
+                          <Badge variant="default" className="text-[10px] bg-primary/80">Author</Badge>
+                        </div>
+
+                        {(selectedEvent?.coordinator_names || []).map((name, i) => (
+                          <div key={i} className="flex items-center justify-between p-3 rounded-xl border bg-card/50">
+                            <div className="flex items-center gap-3">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                                {name.charAt(0)}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{name}</p>
+                                <p className="text-[10px] text-muted-foreground uppercase">{i === 0 ? 'Lead Coordinator' : 'Co-manager'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 py-6 border-dashed border-2 hover:border-primary/50 hover:bg-primary/5 transition-all text-primary"
+                        onClick={() => openInviteDialog(selectedEvent)}
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Add or Invite Coordinators
+                      </Button>
+                      <p className="text-[10px] text-center text-muted-foreground">
+                        Coordinators added will have full access to manage this event, generate QR codes, and view attendance.
+                      </p>
+                    </div>
+                  </TabsContent>
 
                   <TabsContent value="attendance" className="space-y-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

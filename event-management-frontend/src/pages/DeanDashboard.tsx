@@ -23,7 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
-import { Event, EventInvitation, EventReport, User, DeanOverviewMetrics } from '@/types';
+import { Event, EventInvitation, EventReport, User, DeanOverviewMetrics, EventOverview } from '@/types';
 import { DEFAULT_SCHOOL, getAllSchools, getBranchesForSchool } from '@/lib/schools';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -58,9 +58,12 @@ import {
   X,
   RefreshCcw,
   Star,
+  MapPin,
   Image as ImageIcon,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { EventCreationDialog } from '@/components/EventCreationDialog';
+import { QRCodeGenerator } from '@/components/QRCodeGenerator';
 
 interface NewUserState {
   name: string;
@@ -72,29 +75,6 @@ interface NewUserState {
   designation: string;
 }
 
-interface NewEventState {
-  title: string;
-  description: string;
-  date: string;
-  startDate: string;
-  endDate: string;
-  time: string;
-  location: string;
-  school: string;
-  department: string;
-  invitation_mode: 'invite-only' | 'open';
-  allow_self_check_in: boolean;
-  coordinatorIds: string[];
-  category: 'seminar' | 'workshop' | 'competition' | 'guest-lecture' | 'hackathon' | 'orientation' | 'cultural' | 'sports' | 'other';
-  event_format: 'seminar' | 'panel' | 'hands-on' | 'networking' | 'ceremony' | 'other';
-  delivery_mode: 'in-person' | 'online' | 'hybrid';
-  tags: string;
-  sponsors: string;
-  sdg: string[];
-  guest_speakers: string;
-  requires_approval: boolean;
-}
-
 export default function DeanDashboard() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
@@ -104,7 +84,6 @@ export default function DeanDashboard() {
     return branches.length > 0 ? branches : ['General'];
   }, []);
   const [newUserBranches, setNewUserBranches] = useState<string[]>(defaultBranches);
-  const [newEventBranches, setNewEventBranches] = useState<string[]>(defaultBranches);
 
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -132,6 +111,8 @@ export default function DeanDashboard() {
   const [isUsersLoading, setIsUsersLoading] = useState(false);
   const [userSchoolFilter, setUserSchoolFilter] = useState<'others' | 'all' | string>('others');
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [showQRDialog, setShowQRDialog] = useState(false);
+  const [selectedQREvent, setSelectedQREvent] = useState<Event | null>(null);
 
   const [newUser, setNewUser] = useState<NewUserState>({
     name: '',
@@ -143,40 +124,18 @@ export default function DeanDashboard() {
     designation: 'Student',
   });
 
-  const [newEvent, setNewEvent] = useState<NewEventState>({
-    title: '',
-    description: '',
-    date: '',
-    startDate: '',
-    endDate: '',
-    time: '',
-    location: '',
-    school: DEFAULT_SCHOOL,
-    department: defaultBranches[0] ?? '',
-    invitation_mode: 'invite-only',
-    allow_self_check_in: true,
-    coordinatorIds: [],
-    category: 'seminar',
-    event_format: 'seminar',
-    delivery_mode: 'in-person',
-    tags: '',
-    sponsors: '',
-    sdg: [],
-    guest_speakers: '',
-    requires_approval: true,
-  });
-
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [finalizeEventTarget, setFinalizeEventTarget] = useState<Event | null>(null);
   const [reportNotes, setReportNotes] = useState('');
   const [finalizeReport, setFinalizeReport] = useState<EventReport | null>(null);
   const [eventInvitations, setEventInvitations] = useState<EventInvitation[]>([]);
-  // Report generation has been moved to coordinator UI; keep dialog state disabled.
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
   const [finalizeLoading, setFinalizeLoading] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user: User | null }>({ open: false, user: null });
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [eventOverview, setEventOverview] = useState<EventOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   // Restore the new user form to its default state.
   const resetNewUser = () => {
@@ -192,59 +151,6 @@ export default function DeanDashboard() {
       department: normalizedBranches[0] ?? '',
       designation: 'Student',
     });
-  };
-
-  // Clear the event creation form when dialogs close.
-  const resetNewEvent = () => {
-    const branches = getBranchesForSchool(DEFAULT_SCHOOL);
-    const normalizedBranches = branches.length > 0 ? branches : ['General'];
-    setNewEventBranches(normalizedBranches);
-    setNewEvent({
-      title: '',
-      description: '',
-      date: '',
-      startDate: '',
-      endDate: '',
-      time: '',
-      location: '',
-      school: DEFAULT_SCHOOL,
-      department: normalizedBranches[0] ?? '',
-      invitation_mode: 'invite-only',
-      allow_self_check_in: true,
-      coordinatorIds: [],
-      category: 'seminar',
-      event_format: 'seminar',
-      delivery_mode: 'in-person',
-      tags: '',
-      sponsors: '',
-      sdg: [],
-      guest_speakers: '',
-      requires_approval: true,
-    });
-  };
-
-  // Update branch options when the user selects a different school.
-  const handleNewUserSchoolChange = (school: string) => {
-    const branches = getBranchesForSchool(school);
-    const normalizedBranches = branches.length > 0 ? branches : ['General'];
-    setNewUserBranches(normalizedBranches);
-    setNewUser((prev) => ({
-      ...prev,
-      school,
-      department: normalizedBranches[0] ?? '',
-    }));
-  };
-
-  // Keep event branch selections aligned with the chosen school.
-  const handleNewEventSchoolChange = (school: string) => {
-    const branches = getBranchesForSchool(school);
-    const normalizedBranches = branches.length > 0 ? branches : ['General'];
-    setNewEventBranches(normalizedBranches);
-    setNewEvent((prev) => ({
-      ...prev,
-      school,
-      department: normalizedBranches[0] ?? '',
-    }));
   };
 
   // Load user listings with current filters applied.
@@ -293,7 +199,7 @@ export default function DeanDashboard() {
       const deanSchool = currentUser?.school;
       const eventsForSchool = eventsData.filter((event) => {
         const matchesSchool = deanSchool ? (event.school || DEFAULT_SCHOOL) === deanSchool : true;
-        return matchesSchool && event.status === 'scheduled';
+        return matchesSchool && ['scheduled', 'ongoing', 'completed', 'cancelled'].includes(event.status);
       });
       const pendingForSchool = eventsData.filter((event) => {
         const matchesSchool = deanSchool ? (event.school || DEFAULT_SCHOOL) === deanSchool : true;
@@ -321,6 +227,18 @@ export default function DeanDashboard() {
       setIsLoading(false);
     }
   }, [toast, currentUser?.school]);
+
+  // Update branch options when the user selects a different school.
+  const handleNewUserSchoolChange = (school: string) => {
+    const branches = getBranchesForSchool(school);
+    const normalizedBranches = branches.length > 0 ? branches : ['General'];
+    setNewUserBranches(normalizedBranches);
+    setNewUser((prev) => ({
+      ...prev,
+      school,
+      department: normalizedBranches[0] ?? '',
+    }));
+  };
 
   useEffect(() => {
     loadData();
@@ -360,80 +278,8 @@ export default function DeanDashboard() {
   };
 
   // Submit a dean-authored event and reset form inputs.
-  const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateLoading(true);
-    if (!newEvent.date && !newEvent.startDate) {
-      toast({
-        title: 'Event date required',
-        description: 'Please select a date (or start date) for the event.',
-        variant: 'destructive',
-      });
-      setCreateLoading(false);
-      return;
-    }
-    if (!newEvent.time) {
-      toast({
-        title: 'Event time required',
-        description: 'Please select a time for the event.',
-        variant: 'destructive',
-      });
-      setCreateLoading(false);
-      return;
-    }
-
-    try {
-      const isoDate = newEvent.date
-        ? new Date(`${newEvent.date}T${newEvent.time}`).toISOString()
-        : new Date(`${newEvent.startDate}T${newEvent.time}`).toISOString();
-
-      const tagList = newEvent.tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-      const sponsorList = newEvent.sponsors
-        .split(',')
-        .map((sponsor) => sponsor.trim())
-        .filter(Boolean);
-
-      await apiService.createEvent({
-        title: newEvent.title,
-        description: newEvent.description,
-        date: isoDate,
-        startDate: newEvent.startDate,
-        endDate: newEvent.endDate,
-        location: newEvent.location,
-        school: newEvent.school,
-        department: newEvent.department,
-        invitation_mode: newEvent.invitation_mode,
-        allow_self_check_in: newEvent.allow_self_check_in,
-        coordinator_ids: newEvent.coordinatorIds,
-        category: newEvent.category,
-        event_format: newEvent.event_format,
-        delivery_mode: newEvent.delivery_mode,
-        tags: tagList,
-        sponsors: sponsorList,
-        sdg: newEvent.sdg,
-        guest_speakers: newEvent.guest_speakers.split('\n').filter(s => s.trim()),
-        requires_approval: newEvent.requires_approval,
-      });
-
-      toast({
-        title: 'Event scheduled',
-        description: `${newEvent.title} has been created and assigned to the selected coordinators.`,
-      });
-      setCreateDialogOpen(false);
-      resetNewEvent();
-      loadData();
-    } catch (error) {
-      toast({
-        title: 'Unable to create event',
-        description: error instanceof Error ? error.message : 'Please review the details and try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setCreateLoading(false);
-    }
+  const handleCreateEventSuccess = () => {
+    loadData();
   };
 
   // Track delete dialog visibility and reset transient state.
@@ -525,7 +371,7 @@ export default function DeanDashboard() {
 
   // Remove an event from the system after dean confirmation.
   const handleDeleteEvent = async (eventId: string) => {
-    if (!confirm('Are you sure you want to remove this event?')) return;
+    if (!confirm('Are you sure you want to permanently remove this event?')) return;
     try {
       await apiService.deleteEvent(eventId);
       toast({
@@ -536,6 +382,25 @@ export default function DeanDashboard() {
     } catch (error) {
       toast({
         title: 'Unable to delete event',
+        description: error instanceof Error ? error.message : 'Please try again later.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Cancel an event (sets status to cancelled, hides from active list)
+  const handleCancelEvent = async (eventId: string, title: string) => {
+    if (!confirm(`Are you sure you want to cancel "${title}"? This will stop attendance and hide the event.`)) return;
+    try {
+      await apiService.cancelEvent(eventId);
+      toast({
+        title: 'Event cancelled',
+        description: `"${title}" has been cancelled.`,
+      });
+      loadData();
+    } catch (error) {
+      toast({
+        title: 'Unable to cancel event',
         description: error instanceof Error ? error.message : 'Please try again later.',
         variant: 'destructive',
       });
@@ -555,11 +420,19 @@ export default function DeanDashboard() {
   // Retrieve detailed invitation stats when inspecting an event.
   const handleViewEvent = async (event: Event) => {
     setDetailEvent(event);
+    setOverviewLoading(true);
     try {
-      const invitations = await apiService.getEventInvitations(event.id);
+      const [invitations, overview] = await Promise.all([
+        apiService.getEventInvitations(event.id),
+        apiService.getEventOverview(event.id)
+      ]);
       setEventInvitations(invitations);
+      setEventOverview(overview);
     } catch {
       setEventInvitations([]);
+      setEventOverview(null);
+    } finally {
+      setOverviewLoading(false);
     }
   };
 
@@ -605,892 +478,691 @@ export default function DeanDashboard() {
 
   return (
     <Layout title="Dean Control Center">
-      <div className="space-y-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Crown className="w-8 h-8 text-yellow-500" />
-              Dean Dashboard
+              <Crown className="w-7 h-7 text-yellow-500" />
+              Dean Control Center
             </h1>
-            <p className="text-muted-foreground">
-              Coordinate events across every school and branch.
-            </p>
+            <p className="text-muted-foreground">Oversee events, approvals, and coordinators across all schools.</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button className="gap-2" onClick={() => setCreateDialogOpen(true)}>
-              <Target className="w-4 h-4" />
-              Schedule Event
-            </Button>
-            {/* Create Event Dialog */}
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <DialogContent className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Schedule New Event</DialogTitle>
-                  <DialogDescription>
-                    Create a new event for your school or department.
-                  </DialogDescription>
-                </DialogHeader>
-
-                <form onSubmit={handleCreateEvent} className="space-y-8 py-4">
-                  {/* Basic Details Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Basic Details</h3>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="eventTitle">Event Title</Label>
-                        <Input
-                          id="eventTitle"
-                          value={newEvent.title}
-                          onChange={(e) => setNewEvent((prev) => ({ ...prev, title: e.target.value }))}
-                          placeholder="e.g., Annual Tech Symposium 2024"
-                          className="text-lg font-medium"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="eventDescription">Description</Label>
-                        <Textarea
-                          id="eventDescription"
-                          value={newEvent.description}
-                          onChange={(e) => setNewEvent((prev) => ({ ...prev, description: e.target.value }))}
-                          placeholder="Provide context, goals, and what attendees can expect..."
-                          rows={3}
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Logistics Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Logistics</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {['hackathon', 'competition', 'cultural', 'sports'].includes(newEvent.category) ? (
-                        <>
-                          <div className="space-y-2">
-                            <Label htmlFor="startDate">Start Date</Label>
-                            <Input
-                              id="startDate"
-                              type="date"
-                              value={newEvent.startDate}
-                              onChange={(e) => setNewEvent((prev) => ({ ...prev, startDate: e.target.value }))}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="endDate">End Date</Label>
-                            <Input
-                              id="endDate"
-                              type="date"
-                              value={newEvent.endDate}
-                              onChange={(e) => setNewEvent((prev) => ({ ...prev, endDate: e.target.value }))}
-                              required
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <div className="space-y-2">
-                          <Label htmlFor="eventDate">Date</Label>
-                          <Input
-                            id="eventDate"
-                            type="date"
-                            value={newEvent.date}
-                            onChange={(e) => setNewEvent((prev) => ({ ...prev, date: e.target.value }))}
-                            required
-                          />
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <Label htmlFor="eventTime">Time</Label>
-                        <Input
-                          id="eventTime"
-                          type="time"
-                          value={newEvent.time}
-                          onChange={(e) => setNewEvent((prev) => ({ ...prev, time: e.target.value }))}
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="eventLocation">Venue</Label>
-                        <Input
-                          id="eventLocation"
-                          value={newEvent.location}
-                          onChange={(e) => setNewEvent((prev) => ({ ...prev, location: e.target.value }))}
-                          placeholder="e.g., Innovation Hub Auditorium"
-                          required
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Organization Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Organization</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label>School</Label>
-                        <Select
-                          value={newEvent.school}
-                          onValueChange={(value) => {
-                            const branches = getBranchesForSchool(value);
-                            setNewEvent((prev) => ({
-                              ...prev,
-                              school: value,
-                              department: branches[0] || '',
-                            }));
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select school" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getAllSchools().map((school) => (
-                              <SelectItem key={school} value={school}>
-                                {school}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Department / Programme</Label>
-                        <Select
-                          value={newEvent.department}
-                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, department: value }))}
-                          disabled={!newEvent.school}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select department" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getBranchesForSchool(newEvent.school).map((branch) => (
-                              <SelectItem key={branch} value={branch}>
-                                {branch}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Categorization Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Categorization</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select
-                          value={newEvent.category}
-                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, category: value as NewEventState['category'] }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="seminar">Seminar</SelectItem>
-                            <SelectItem value="workshop">Workshop</SelectItem>
-                            <SelectItem value="guest-lecture">Guest Lecture</SelectItem>
-                            <SelectItem value="hackathon">Hackathon</SelectItem>
-                            <SelectItem value="competition">Competition</SelectItem>
-                            <SelectItem value="orientation">Orientation</SelectItem>
-                            <SelectItem value="cultural">Cultural</SelectItem>
-                            <SelectItem value="sports">Sports</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Format</Label>
-                        <Select
-                          value={newEvent.event_format}
-                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, event_format: value as NewEventState['event_format'] }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select format" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="seminar">Seminar</SelectItem>
-                            <SelectItem value="panel">Panel Discussion</SelectItem>
-                            <SelectItem value="hands-on">Hands-on / Lab</SelectItem>
-                            <SelectItem value="networking">Networking</SelectItem>
-                            <SelectItem value="ceremony">Ceremony</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Delivery Mode</Label>
-                        <Select
-                          value={newEvent.delivery_mode}
-                          onValueChange={(value) => setNewEvent((prev) => ({ ...prev, delivery_mode: value as NewEventState['delivery_mode'] }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="in-person">In-person</SelectItem>
-                            <SelectItem value="online">Online</SelectItem>
-                            <SelectItem value="hybrid">Hybrid</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="eventTags">Tags</Label>
-                        <Input
-                          id="eventTags"
-                          value={newEvent.tags}
-                          onChange={(e) => setNewEvent((prev) => ({ ...prev, tags: e.target.value }))}
-                          placeholder="innovation, ai, alumni"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="eventSponsors">Sponsors / Partners</Label>
-                        <Input
-                          id="eventSponsors"
-                          value={newEvent.sponsors}
-                          onChange={(e) => setNewEvent((prev) => ({ ...prev, sponsors: e.target.value }))}
-                          placeholder="Manipal Alumni Association"
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Additional Details Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Additional Details</h3>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="guestSpeakers">Guest Speakers (one per line)</Label>
-                      <Textarea
-                        id="guestSpeakers"
-                        value={newEvent.guest_speakers}
-                        onChange={(e) => setNewEvent((prev) => ({ ...prev, guest_speakers: e.target.value }))}
-                        placeholder="Dr. Jane Doe, CEO of TechCorp&#10;Mr. John Smith, AI Researcher"
-                        rows={3}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Sustainable Development Goals (SDGs)</Label>
-                      <div className="flex flex-wrap gap-2 p-4 border rounded-lg bg-muted/20">
-                        {['SDG 1', 'SDG 2', 'SDG 3', 'SDG 4', 'SDG 5', 'SDG 6', 'SDG 7', 'SDG 8', 'SDG 9', 'SDG 10', 'SDG 11', 'SDG 12', 'SDG 13', 'SDG 14', 'SDG 15', 'SDG 16', 'SDG 17'].map((sdg) => {
-                          const isSelected = newEvent.sdg.includes(sdg);
-                          return (
-                            <Button
-                              key={sdg}
-                              type="button"
-                              variant={isSelected ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => {
-                                setNewEvent((prev) => ({
-                                  ...prev,
-                                  sdg: isSelected
-                                    ? prev.sdg.filter((s) => s !== sdg)
-                                    : [...prev.sdg, sdg],
-                                }));
-                              }}
-                              className={`text-xs h-7 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}
-                            >
-                              {sdg}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Assign Coordinators</Label>
-                      <div className="flex flex-wrap gap-2 p-4 border rounded-lg bg-muted/20 min-h-[100px]">
-                        {coordinators.map((coordinator) => {
-                          const isSelected = newEvent.coordinatorIds.includes(coordinator.id);
-                          return (
-                            <Button
-                              key={coordinator.id}
-                              type="button"
-                              variant={isSelected ? 'default' : 'outline'}
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => {
-                                setNewEvent((prev) => ({
-                                  ...prev,
-                                  coordinatorIds: isSelected
-                                    ? prev.coordinatorIds.filter((id) => id !== coordinator.id)
-                                    : [...prev.coordinatorIds, coordinator.id],
-                                }));
-                              }}
-                            >
-                              {isSelected && <Check className="w-4 h-4" />}
-                              {coordinator.name}
-                            </Button>
-                          );
-                        })}
-                        {coordinators.length === 0 && (
-                          <p className="text-sm text-muted-foreground w-full text-center py-8">
-                            No coordinators available.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Settings Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b pb-2">Settings</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label>Invitation Mode</Label>
-                        <Select
-                          value={newEvent.invitation_mode}
-                          onValueChange={(value: 'invite-only' | 'open') =>
-                            setNewEvent((prev) => ({ ...prev, invitation_mode: value }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select invitation mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="invite-only">Invite-only (recommended)</SelectItem>
-                            <SelectItem value="open">Open to all students</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Allow self check-in</Label>
-                        <Select
-                          value={newEvent.allow_self_check_in ? 'yes' : 'no'}
-                          onValueChange={(value: 'yes' | 'no') =>
-                            setNewEvent((prev) => ({ ...prev, allow_self_check_in: value === 'yes' }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Allow self check-in" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="yes">Yes — attendees can scan and mark attendance</SelectItem>
-                            <SelectItem value="no">No — coordinators will mark attendance</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Requires Dean Approval</Label>
-                        <Select
-                          value={newEvent.requires_approval ? 'yes' : 'no'}
-                          onValueChange={(value: 'yes' | 'no') =>
-                            setNewEvent((prev) => ({ ...prev, requires_approval: value === 'yes' }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="yes">Yes, route for approval</SelectItem>
-                            <SelectItem value="no">No, publish immediately</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </section>
-                </form>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateEvent} disabled={createLoading}>
-                    {createLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      'Schedule Event'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <Button className="gap-2 self-start" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Schedule Event
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {statsDisplay.map((stat) => (
-            <Card key={stat.label} className="bg-gradient-card shadow-card border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                    <stat.icon className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{isLoading ? '-' : stat.value}</p>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+        {/* Hero banner */}
+        <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8" style={{ background: 'var(--gradient-primary)' }}>
+          <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-white space-y-1">
+              <p className="text-sm font-medium opacity-80 uppercase tracking-wider">Command Center</p>
+              <h2 className="text-2xl sm:text-3xl font-bold">{currentUser?.name?.split(' ')[0] ?? 'Dean'}</h2>
+              <p className="text-sm opacity-75">{currentUser?.school || DEFAULT_SCHOOL}</p>
+            </div>
+            <div className="flex flex-wrap gap-6 text-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold">{isLoading ? '—' : stats.totalEvents}</p>
+                <p className="text-xs opacity-75 mt-1">Total Events</p>
+              </div>
+              <div className="w-px bg-white/20 hidden sm:block" />
+              <div className="text-center">
+                <p className="text-3xl font-bold">{isLoading ? '—' : pendingEvents.length}</p>
+                <p className="text-xs opacity-75 mt-1">Pending</p>
+              </div>
+              <div className="w-px bg-white/20 hidden sm:block" />
+              <div className="text-center">
+                <p className="text-3xl font-bold">{isLoading ? '—' : stats.totalCoordinators}</p>
+                <p className="text-xs opacity-75 mt-1">Coordinators</p>
+              </div>
+              <div className="w-px bg-white/20 hidden sm:block" />
+              <div className="text-center">
+                <p className="text-3xl font-bold">{isLoading ? '—' : (overview?.totalAttendance ?? 0)}</p>
+                <p className="text-xs opacity-75 mt-1">Check-ins</p>
+              </div>
+            </div>
+          </div>
+          <div className="absolute -top-8 -right-8 w-48 h-48 rounded-full opacity-10" style={{ background: 'hsl(var(--university-gold))' }} />
+          <div className="absolute -bottom-12 -left-8 w-56 h-56 rounded-full opacity-10" style={{ background: 'hsl(var(--primary))' }} />
+        </div>
+
+        {/* Create Event Dialog — lives outside any button wrapper */}
+        <EventCreationDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          onSuccess={handleCreateEventSuccess}
+          userRole="dean"
+          userSchool={currentUser?.school}
+          userDepartment={currentUser?.department}
+        />
+
+        {/* Pending Approvals */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Clock className="w-5 h-5 text-warning-foreground" />
+              Pending Approvals
+            </h2>
+            {pendingEvents.length > 0 && (
+              <Badge className="bg-warning/20 text-warning-foreground border-warning/30">{pendingEvents.length} awaiting</Badge>
+            )}
+          </div>
+          {pendingEvents.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-xl border bg-success/5 border-success/20 px-4 py-3">
+              <CheckCircle className="w-5 h-5 text-success shrink-0" />
+              <p className="text-sm font-medium text-success">All events are approved — great job!</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {pendingEvents.map((event) => (
+                <div key={event.id} className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+                  <div className="h-1 w-full bg-warning/60" />
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <p className="font-semibold leading-tight">{event.title}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Proposed by: <span className="font-medium text-foreground/80">{event.created_by_name || 'Coordinator'}</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {event.department || 'General'} · {event.school || 'MIT'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant="secondary" className="capitalize text-[11px]">{event.category.replace(/-/g, ' ')}</Badge>
+                      <Badge variant="outline" className="capitalize text-[11px]">{event.delivery_mode.replace('-', ' ')}</Badge>
+                      <span className="text-[11px] text-muted-foreground self-center">{formatDate(event.date)}</span>
+                    </div>
+                    {event.coordinator_names.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        📋 {event.coordinator_names.join(', ')}
+                      </p>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <Button size="sm" variant="outline" className="flex-1 gap-1.5 h-8 text-xs text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5" onClick={() => openApprovalDialog(event, 'rejected')}>
+                        <XCircle className="w-3.5 h-3.5" /> Reject
+                      </Button>
+                      <Button size="sm" className="flex-1 gap-1.5 h-8 text-xs bg-success hover:bg-success/90" onClick={() => openApprovalDialog(event, 'approved')}>
+                        <CheckCircle className="w-3.5 h-3.5" /> Approve
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              ))}
+            </div>
+          )}
+        </section>
 
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Pending Approvals
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pendingEvents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">All events are approved. Great job!</p>
-            ) : (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Event</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Mode</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Coordinators</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingEvents.map((event) => (
-                      <TableRow key={event.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex flex-col">
-                            <span>{event.title}</span>
-                            <span className="text-xs text-muted-foreground">{event.department || 'General'} • {event.school || 'MIT'}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{formatDate(event.date)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">{event.delivery_mode.replace('-', ' ')}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="capitalize">{event.category.replace('-', ' ')}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {event.coordinator_names.length > 0 ? event.coordinator_names.join(', ') : 'Unassigned'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1"
-                              onClick={() => openApprovalDialog(event, 'rejected')}
-                            >
-                              <XCircle className="w-4 h-4" />
-                              Reject
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => openApprovalDialog(event, 'approved')}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              Approve
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
+        {/* Analytics — departments + recent events */}
         {overview && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card className="bg-gradient-card shadow-card border-0">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  Top Departments by Attendance
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {overview.topDepartments.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No attendance data yet.</p>
-                )}
-                {overview.topDepartments.map((dept) => (
-                  <div key={dept.department} className="flex flex-col gap-2 p-3 border rounded-lg sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-center sm:text-left">
-                      <p className="font-medium">{dept.department}</p>
-                      <p className="text-xs text-muted-foreground">{dept.events} events • {dept.attendance} check-ins</p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <div className="rounded-2xl border bg-card shadow-sm p-5">
+              <h3 className="font-semibold flex items-center gap-2 mb-4">
+                <BarChart3 className="w-4 h-4 text-primary" />
+                Top Departments by Attendance
+              </h3>
+              {overview.topDepartments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No attendance data yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {overview.topDepartments.map((dept, i) => {
+                    const max = overview.topDepartments[0]?.attendance || 1;
+                    const pct = Math.round((dept.attendance / max) * 100);
+                    return (
+                      <div key={dept.department}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="font-medium truncate">{dept.department}</span>
+                          <span className="text-muted-foreground text-xs shrink-0 ml-2">{dept.attendance} check-ins · {dept.events} events</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: i === 0 ? 'var(--gradient-primary)' : 'hsl(var(--primary) / 0.5)' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-            <Card className="bg-gradient-card shadow-card border-0">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  Recently Scheduled
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {overview.recentEvents.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No events created recently.</p>
-                )}
-                {overview.recentEvents.map((recent) => (
-                  <div key={recent._id || `${recent.name}-${recent.date}`} className="flex flex-col gap-2 p-3 border rounded-lg sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-center sm:text-left">
-                      <p className="font-medium">{recent.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(recent.date)}</p>
+            <div className="rounded-2xl border bg-card shadow-sm p-5">
+              <h3 className="font-semibold flex items-center gap-2 mb-4">
+                <Calendar className="w-4 h-4 text-primary" />
+                Recently Scheduled
+              </h3>
+              {overview.recentEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No events created recently.</p>
+              ) : (
+                <div className="space-y-2">
+                  {overview.recentEvents.map((recent) => (
+                    <div key={recent._id || `${recent.name}-${recent.date}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors">
+                      <div className={`h-2 w-2 rounded-full shrink-0 ${recent.approvalStatus === 'approved' ? 'bg-success' : recent.approvalStatus === 'pending' ? 'bg-warning' : 'bg-destructive'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{recent.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(recent.date)}</p>
+                      </div>
+                      <Badge variant={recent.approvalStatus === 'approved' ? 'secondary' : 'outline'} className="capitalize text-[11px] shrink-0">
+                        {recent.approvalStatus}
+                      </Badge>
                     </div>
-                    <Badge variant={recent.approvalStatus === 'approved' ? 'secondary' : 'outline'} className="w-full justify-center capitalize sm:w-auto">
-                      {recent.approvalStatus}
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
+        {/* Community Directory */}
+        <section>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Users className="w-5 h-5 text-primary" />
               Community Directory
-              <Badge variant="outline" className="ml-2">{isUsersLoading ? '—' : users.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="relative flex-1 min-w-[220px]">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={userSearchTerm}
-                    onChange={(e) => setUserSearchTerm(e.target.value)}
-                    placeholder="Search by name, email, or department"
-                    className="pl-9"
-                  />
-                </div>
-                <div className="sm:w-60">
-                  <Select value={userSchoolFilter} onValueChange={(value) => setUserSchoolFilter(value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by school" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="others">All other schools</SelectItem>
-                      <SelectItem value="all">Entire university</SelectItem>
-                      {currentUser?.school && (
-                        <SelectItem value={currentUser.school}>
-                          {currentUser.school} (My school)
+              <Badge variant="outline" className="ml-1">{isUsersLoading ? '—' : users.length}</Badge>
+            </h2>
+          </div>
+          <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  placeholder="Search by name, email, or department"
+                  className="pl-9"
+                />
+              </div>
+              <div className="sm:w-60">
+                <Select value={userSchoolFilter} onValueChange={(value) => setUserSchoolFilter(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by school" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="others">All other schools</SelectItem>
+                    <SelectItem value="all">Entire university</SelectItem>
+                    {currentUser?.school && (
+                      <SelectItem value={currentUser.school}>
+                        {currentUser.school} (My school)
+                      </SelectItem>
+                    )}
+                    {schoolOptions
+                      .filter((school) => school !== currentUser?.school)
+                      .map((school) => (
+                        <SelectItem key={school} value={school}>
+                          {school}
                         </SelectItem>
-                      )}
-                      {schoolOptions
-                        .filter((school) => school !== currentUser?.school)
-                        .map((school) => (
-                          <SelectItem key={school} value={school}>
-                            {school}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>School</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isUsersLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        <div className="flex items-center justify-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Loading directory…</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : users.length > 0 ? (
-                    users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Badge variant={user.role === 'dean' ? 'destructive' : 'secondary'}>
-                            {user.role === 'dean' ? 'Dean' : user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{user.school || '—'}</TableCell>
-                        <TableCell>{formatDate(user.created_at)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button variant="outline" size="sm" title="Reset password (coming soon)">
-                              <Key className="w-4 h-4" />
-                            </Button>
-                            <Button variant="outline" size="sm" title="Edit profile (coming soon)">
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => {
-                                setDeleteDialog({ open: true, user });
-                                setDeletePassword('');
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        No users found. Adjust your filters or invite coordinators from another school.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {isUsersLoading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-24 rounded-xl border bg-muted/20 animate-pulse" />
+              ))
+            ) : users.length > 0 ? (
+              users.map((user) => (
+                <div key={user.id} className="group relative rounded-xl border bg-card p-4 hover:shadow-md transition-all">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">{user.name}</p>
+                        <p className="text-xs text-muted-foreground truncate max-w-[150px]">{user.email}</p>
+                      </div>
+                    </div>
+                    <Badge variant={user.role === 'dean' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                      {user.role}
+                    </Badge>
+                  </div>
 
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-muted-foreground uppercase font-semibold">School</p>
+                      <p className="text-xs font-medium">{user.school || '—'}</p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Edit">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive"
+                        title="Delete"
+                        onClick={() => {
+                          setDeleteDialog({ open: true, user });
+                          setDeletePassword('');
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full py-12 text-center border rounded-xl bg-muted/5">
+                <p className="text-sm text-muted-foreground">No users found match your criteria.</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Event Pipeline */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
               Event Pipeline
-            </CardTitle>
+            </h2>
             <Button variant="outline" size="sm" className="gap-2" onClick={handleExportExcel}>
               <Download className="w-4 h-4" />
               Export Excel
             </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Event</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Venue</TableHead>
-                    <TableHead>Coordinators</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => {
-                    const isDetailOpen = detailEvent?.id === event.id;
-                    const isFinalizeOpen = finalizeDialogOpen && finalizeEventTarget?.id === event.id;
-                    const invitationsForEvent = isDetailOpen ? eventInvitations : [];
-                    const detailData = isDetailOpen ? detailEvent : event;
-                    const finalizeData = isFinalizeOpen ? finalizeEventTarget : event;
+          </div>
+          <div className="space-y-4">
+            {events.filter((e) => e.status !== 'cancelled').length > 0 ? (
+              events.filter((e) => e.status !== 'cancelled').map((event) => {
+                const isDetailOpen = detailEvent?.id === event.id;
+                const invitationsForEvent = isDetailOpen ? eventInvitations : [];
+                const detailData = isDetailOpen ? detailEvent : event;
 
-                    return (
-                      <TableRow key={event.id}>
-                        <TableCell className="font-medium">
-                          <div>
-                            <p>{event.title}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {event.school || DEFAULT_SCHOOL}{event.department ? ` • ${event.department}` : ''}
+                return (
+                  <div key={event.id} className="relative group rounded-2xl border bg-card transition-all hover:shadow-md overflow-hidden">
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${event.approval_status === 'approved' ? 'bg-success' :
+                        event.approval_status === 'pending' ? 'bg-warning' : 'bg-destructive'
+                      }`} />
+
+                    <div className="p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-bold text-lg leading-tight">{event.title}</h3>
+                            <Badge variant={event.status === 'completed' ? 'secondary' : 'default'} className="h-5 text-[10px]">
+                              {event.status}
+                            </Badge>
+                          </div>
+                          {event.created_by_name && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              Proposed by: <span className="font-medium text-foreground/80">{event.created_by_name}</span>
                             </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{formatDate(event.date)}</TableCell>
-                        <TableCell>{event.location}</TableCell>
-                        <TableCell>
-                          {event.coordinator_names.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {event.coordinator_names.map((name) => (
-                                <Badge key={name} variant="secondary">{name}</Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <Badge variant="outline" className="text-muted-foreground">Unassigned</Badge>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <Badge variant={event.status === 'completed' ? 'secondary' : 'default'}>
-                              {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                            </Badge>
-                            <Badge variant="outline">{event.invitation_mode === 'invite-only' ? 'Invite-only' : 'Open'}</Badge>
-                            <Badge
-                              variant={event.approval_status === 'approved' ? 'secondary' : event.approval_status === 'pending' ? 'outline' : 'destructive'}
-                              className="capitalize"
-                            >
-                              {event.approval_status}
-                            </Badge>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-4 h-4" />
+                              {formatDate(event.date)}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="w-4 h-4" />
+                              {event.location}
+                            </div>
+                            <div className="flex items-center gap-1.5 font-medium text-foreground/80">
+                              <GraduationCap className="w-4 h-4" />
+                              {event.school || 'General'}
+                            </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Dialog
-                              open={isDetailOpen}
-                              onOpenChange={(open) => {
-                                if (open) {
-                                  handleViewEvent(event);
-                                  setDetailEvent(event);
-                                } else {
-                                  setDetailEvent(null);
-                                  setEventInvitations([]);
-                                }
-                              }}
-                            >
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    handleViewEvent(event);
-                                    setDetailEvent(event);
-                                  }}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="w-full max-w-2xl">
-                                <DialogHeader>
-                                  <DialogTitle>{detailData.title}</DialogTitle>
-                                  <DialogDescription>
-                                    Invitations and attendance snapshot for this event.
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                      <p className="text-muted-foreground">Date &amp; time</p>
-                                      <p className="font-medium">{formatDate(detailData.date)}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-muted-foreground">Venue</p>
-                                      <p className="font-medium">{detailData.location}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-muted-foreground">Coordinators</p>
-                                      <p className="font-medium">
-                                        {detailData.coordinator_names.length > 0 ? detailData.coordinator_names.join(', ') : 'Unassigned'}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-muted-foreground">Invitation mode</p>
-                                      <p className="font-medium">
-                                        {detailData.invitation_mode === 'invite-only' ? 'Invite-only' : 'Open to CS&E members'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <h3 className="text-sm font-semibold mb-2">Invited attendees</h3>
-                                    <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                      {invitationsForEvent.map((invitation) => (
-                                        <div key={invitation.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
-                                          <div className="text-center sm:text-left">
-                                            <p className="font-medium">{invitation.invitee.name}</p>
-                                            <p className="text-xs text-muted-foreground">{invitation.invitee.email}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Dialog
+                            open={isDetailOpen}
+                            onOpenChange={(open) => {
+                              if (open) {
+                                handleViewEvent(event);
+                                setDetailEvent(event);
+                              } else {
+                                setDetailEvent(null);
+                                setEventInvitations([]);
+                              }
+                            }}
+                          >
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm" className="gap-2 h-9">
+                                <Eye className="w-4 h-4" />
+                                View Stats
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="w-full max-w-4xl">
+                              <DialogHeader>
+                                <DialogTitle className="text-xl font-bold">{detailData.title}</DialogTitle>
+                                <DialogDescription>
+                                  View attendance, manage ownership, and monitor feedback.
+                                </DialogDescription>
+                              </DialogHeader>
+
+                              {detailData && (
+                                <div className="space-y-6 pt-4">
+                                  <Tabs defaultValue="attendance" className="w-full">
+                                    <TabsList className="grid w-full grid-cols-3 md:w-auto md:inline-flex mb-6">
+                                      <TabsTrigger value="attendance" className="gap-2">
+                                        <Users className="w-4 h-4" />
+                                        Attendance
+                                      </TabsTrigger>
+                                      <TabsTrigger value="team" className="gap-2">
+                                        <Shield className="w-4 h-4" />
+                                        Team
+                                      </TabsTrigger>
+                                      <TabsTrigger value="feedback" className="gap-2">
+                                        <Star className="w-4 h-4" />
+                                        Feedback
+                                      </TabsTrigger>
+                                    </TabsList>
+
+                                    <TabsContent value="attendance" className="space-y-4">
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                                        <div className="p-3 rounded-xl border bg-muted/50">
+                                          <p className="text-2xl font-bold">{eventOverview?.attendance.length || 0}</p>
+                                          <p className="text-[10px] uppercase text-muted-foreground font-semibold">Total Attendance</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl border bg-success/5 border-success/20">
+                                          <p className="text-2xl font-bold text-success">
+                                            {eventOverview?.feedback.total || 0}
+                                          </p>
+                                          <p className="text-[10px] uppercase text-success/70 font-semibold">Feedback</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl border bg-warning/5 border-warning/20">
+                                          <p className="text-2xl font-bold text-warning">
+                                            {eventOverview?.feedback.averageRating.toFixed(1) || '0.0'}
+                                          </p>
+                                          <p className="text-[10px] uppercase text-warning/70 font-semibold">Avg Rating</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl border bg-muted/50">
+                                          <p className="text-2xl font-bold">{detailData.coordinator_names.length}</p>
+                                          <p className="text-[10px] uppercase text-muted-foreground font-semibold">Coordinators</p>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid gap-6 md:grid-cols-2">
+                                        <div className="space-y-3">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-sm font-semibold flex items-center gap-2">
+                                              <Users className="w-4 h-4 text-primary" />
+                                              Actual Attendance ({eventOverview?.attendance.length || 0})
+                                            </h4>
                                           </div>
-                                          <div className="text-center sm:text-right">
-                                            <Badge variant={invitation.status === 'accepted' ? 'secondary' : invitation.status === 'pending' ? 'outline' : 'destructive'} className="w-full justify-center sm:w-auto">
-                                              {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
-                                            </Badge>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                              Role: {invitation.role_at_event === 'coordinator' ? 'Coordinator' : 'Attendee'}
-                                            </p>
+                                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 rounded-xl border p-2 bg-muted/30">
+                                            {eventOverview && eventOverview.attendance.length > 0 ? (
+                                              eventOverview.attendance.map((record, idx) => (
+                                                <div key={idx} className="flex items-center justify-between p-3 rounded-xl border bg-card/60 hover:bg-card transition-colors">
+                                                  <div>
+                                                    <p className="text-sm font-medium">{record.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{record.email} · {record.registration_id}</p>
+                                                  </div>
+                                                  <Badge variant="secondary" className="text-[10px]">{record.timestamp ? new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</Badge>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-center py-12">
+                                                <Users className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                                                <p className="text-sm text-muted-foreground">No attendance records yet.</p>
+                                              </div>
+                                            )}
                                           </div>
                                         </div>
-                                      ))}
-                                      {invitationsForEvent.length === 0 && (
-                                        <p className="text-sm text-muted-foreground">
-                                          No invitations have been sent yet. Coordinators can invite participants from their dashboard.
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
+
+                                        <div className="space-y-3">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
+                                              <Mail className="w-4 h-4" />
+                                              Recent Invitations ({invitationsForEvent.length})
+                                            </h4>
+                                          </div>
+                                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 rounded-xl border p-2 bg-muted/10">
+                                            {invitationsForEvent.length > 0 ? (
+                                              invitationsForEvent.map((invitation) => (
+                                                <div key={invitation.id} className="flex items-center justify-between p-3 rounded-xl border bg-card/40">
+                                                  <div>
+                                                    <p className="text-sm font-medium">{invitation.invitee.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{invitation.invitee.email}</p>
+                                                  </div>
+                                                  <Badge variant={invitation.status === "accepted" ? "secondary" : "outline"} className="text-[10px]">
+                                                    {invitation.status}
+                                                  </Badge>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-center py-8">
+                                                <p className="text-xs text-muted-foreground">No invitations tracked.</p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </TabsContent>
+
+                                    <TabsContent value="team" className="space-y-4">
+                                      <div className="flex flex-col gap-4">
+                                        <div className="flex items-center justify-between">
+                                          <h4 className="text-sm font-semibold flex items-center gap-2 text-primary uppercase tracking-wider">
+                                            Assigned Coordinators
+                                          </h4>
+                                          <Badge variant="secondary">Total: {detailData.coordinator_names.length}</Badge>
+                                        </div>
+
+                                        <div className="grid gap-2">
+                                          {/* Proposer / Creator */}
+                                          <div className="flex items-center justify-between p-4 rounded-2xl border bg-primary/5 border-primary/20 transition-all hover:bg-card">
+                                            <div className="flex items-center gap-4">
+                                              <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-white">
+                                                {(detailData?.created_by_name || 'P').charAt(0)}
+                                              </div>
+                                              <div>
+                                                <p className="text-sm font-bold">{detailData?.created_by_name || 'Event Proposer'}</p>
+                                                <p className="text-[10px] text-primary font-medium uppercase tracking-tight">Original Proposer</p>
+                                              </div>
+                                            </div>
+                                            <Badge variant="default" className="text-[10px] bg-primary/80">Author</Badge>
+                                          </div>
+
+                                          {(detailData?.coordinator_names || []).map((name, i) => (
+                                            <div key={i} className="flex items-center justify-between p-4 rounded-2xl border bg-card/50 transition-all hover:bg-card">
+                                              <div className="flex items-center gap-4">
+                                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+                                                  {name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                  <p className="text-sm font-bold">{name}</p>
+                                                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">
+                                                    {i === 0 ? "Lead Manager" : "Co-manager"}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <Badge variant="outline" className="text-[10px] border-primary/20 text-primary">Active</Badge>
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        <div className="mt-4 p-4 rounded-2xl border border-warning/20 bg-warning/5 text-warning-foreground text-[11px] leading-relaxed italic">
+                                          Deans can add more coordinators through the standard creation/edit flow.
+                                          Coordinators listed here have full management rights for check-ins, QR tools, and reporting.
+                                        </div>
+                                      </div>
+                                    </TabsContent>
+
+                                    <TabsContent value="feedback" className="space-y-4">
+                                      <div className="flex items-center justify-between border-b pb-2">
+                                        <h4 className="text-sm font-semibold flex items-center gap-2">
+                                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                          Feedback Entries ({eventOverview?.feedback.total || 0})
+                                        </h4>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-sm font-bold text-primary">{eventOverview?.feedback.averageRating.toFixed(1) || '0.0'}</span>
+                                          <span className="text-xs text-muted-foreground">average</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid gap-3">
+                                        {eventOverview && eventOverview.feedback.entries.length > 0 ? (
+                                          eventOverview.feedback.entries.map((fb, idx) => (
+                                            <div key={idx} className="p-4 rounded-2xl border bg-card shadow-sm space-y-2">
+                                              <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                  <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
+                                                    {fb.user?.name?.charAt(0) || 'A'}
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-bold">{fb.user?.name || 'Anonymous'}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{fb.user?.email || 'No email'}</p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex gap-0.5">
+                                                  {[...Array(5)].map((_, i) => (
+                                                    <Star
+                                                      key={i}
+                                                      className={`w-3 h-3 ${i < fb.rating ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground/20'}`}
+                                                    />
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              {fb.comments && <p className="text-xs text-muted-foreground italic">“{fb.comments}”</p>}
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div className="text-center py-16">
+                                            <Star className="w-12 h-12 text-muted-foreground/10 mx-auto mb-3" />
+                                            <p className="text-sm text-muted-foreground">No feedback results available for this event yet.</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </TabsContent>
+                                  </Tabs>
                                 </div>
-                              </DialogContent>
-                            </Dialog>
-                            {/* Report generation disabled for deans; coordinators own this flow */}
+                              )}
+                            </DialogContent>
+                          </Dialog>
+
+                          <div className="flex gap-1 border rounded-lg p-1">
+                            {event.approval_status === 'approved' && event.status !== 'completed' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-orange-600"
+                                title="Cancel Event"
+                                onClick={() => handleCancelEvent(event.id, event.title)}
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {event.approval_status === 'approved' && event.status !== 'completed' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary"
+                                title="Show Attendance QR"
+                                onClick={() => {
+                                  setSelectedQREvent(event);
+                                  setShowQRDialog(true);
+                                }}
+                              >
+                                <QrCode className="w-4 h-4" />
+                              </Button>
+                            )}
                             <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              title="Delete Event"
                               onClick={() => handleDeleteEvent(event.id)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {events.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        No events scheduled. Use the &ldquo;Schedule Event&rdquo; button to create the first CS&E event.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                        </div>
+                      </div>
 
-        <Card className="bg-gradient-card shadow-card border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5" />
-              Governance &amp; Controls
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-3 p-4 border rounded-lg sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-col gap-3 text-center sm:flex-row sm:items-center sm:text-left">
-                  <AlertTriangle className="w-5 h-5 text-warning" />
-                  <div>
-                    <p className="font-medium">Academic Calendar Sync</p>
-                    <p className="text-sm text-muted-foreground">Align UniPal MIT's timeline with departmental calendar.</p>
+                      <div className="mt-4 flex flex-wrap items-center justify-between border-t pt-4 gap-4">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground uppercase font-semibold">Approval:</span>
+                          <Badge variant={event.approval_status === 'approved' ? 'secondary' : 'outline'} className="capitalize">
+                            {event.approval_status}
+                          </Badge>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="flex -space-x-2">
+                            {event.coordinator_names.slice(0, 3).map((name, i) => (
+                              <div key={i} title={name} className="h-7 w-7 rounded-full bg-muted border-2 border-card flex items-center justify-center text-[10px] font-bold">
+                                {name.charAt(0)}
+                              </div>
+                            ))}
+                            {event.coordinator_names.length > 3 && (
+                              <div className="h-7 w-7 rounded-full bg-primary/10 border-2 border-card flex items-center justify-center text-[10px] font-bold text-primary">
+                                +{event.coordinator_names.length - 3}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {event.coordinator_names.length > 0 ? 'Assigned' : 'Unassigned'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
+                );
+              })
+            ) : (
+              <div className="py-20 text-center border-2 border-dashed rounded-3xl">
+                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                  <Calendar className="w-6 h-6 text-muted-foreground" />
                 </div>
-                <Button variant="outline" size="sm" className="w-full sm:w-auto">Configure</Button>
+                <h3 className="font-semibold text-lg">No events in pipeline</h3>
+                <p className="text-muted-foreground max-w-xs mx-auto text-sm mt-1">
+                  Scheduled events will appear here. Start by creating a new event for your department.
+                </p>
               </div>
-              <div className="flex flex-col gap-3 p-4 border rounded-lg sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-col gap-3 text-center sm:flex-row sm:items-center sm:text-left">
-                  <Shield className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="font-medium">Access Policies</p>
-                    <p className="text-sm text-muted-foreground">Review permissions across deans, coordinators, and students.</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" className="w-full sm:w-auto">Manage</Button>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
+            <Shield className="w-5 h-5 text-primary" />
+            Governance &amp; Controls
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center gap-4 rounded-xl border bg-card p-4">
+              <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Academic Calendar Sync</p>
+                <p className="text-xs text-muted-foreground">Align UniPal MIT's timeline with departmental calendar.</p>
               </div>
+              <Button variant="outline" size="sm">Configure</Button>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-4 rounded-xl border bg-card p-4">
+              <Shield className="w-5 h-5 text-primary shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Access Policies</p>
+                <p className="text-xs text-muted-foreground">Review permissions across deans, coordinators, and students.</p>
+              </div>
+              <Button variant="outline" size="sm">Manage</Button>
+            </div>
+          </div>
+        </section>
+
+        <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
+          <DialogContent className="w-full max-w-md sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Attendance QR Tools</DialogTitle>
+              <DialogDescription>
+                Generate secure QR codes for student check-ins.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedQREvent && (
+              <QRCodeGenerator
+                eventId={selectedQREvent.id}
+                eventTitle={selectedQREvent.title}
+                startDate={selectedQREvent.startDate}
+                endDate={selectedQREvent.endDate}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={deleteDialog.open}

@@ -11,32 +11,54 @@ const normaliseRole = (incomingRole) => {
   return 'student';
 };
 
+// Determine the final role based on the staff category.
+// - student        → always 'student'
+// - non-teaching   → always 'coordinator'
+// - teaching       → honour the role the user selected
+const resolveRoleByCategory = (staffCategory, requestedRole) => {
+  if (staffCategory === 'student') return 'student';
+  if (staffCategory === 'non-teaching') return 'coordinator';
+  // teaching staff — allow role selection
+  return normaliseRole(requestedRole);
+};
+
 // Handle signup and normalise incoming roles to supported values.
 export const register = async (req, res) => {
   try {
-    const { name, email, password, role, school, department, designation } = req.body;
+    const { name, email, password, role, school, department, designation, staffCategory, registrationId, section, semester } = req.body;
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
-    const resolvedRole = normaliseRole(role);
+    const category = ['teaching', 'non-teaching', 'student'].includes(staffCategory)
+      ? staffCategory
+      : 'student';
+    const resolvedRole = resolveRoleByCategory(category, role);
 
     const user = await User.create({
       name,
       email,
       password,
       role: resolvedRole,
+      staffCategory: category,
       school,
       department,
       designation,
+      registrationId: registrationId || undefined,
+      section: section || undefined,
+      semester: semester ? Number(semester) : undefined,
     });
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
+      staffCategory: user.staffCategory,
       school: user.school,
       department: user.department,
       designation: user.designation,
+      registrationId: user.registrationId,
+      section: user.section,
+      semester: user.semester,
       token: generateToken(user._id, user.role),
     });
   } catch (err) {
@@ -57,9 +79,13 @@ export const login = async (req, res) => {
       name: user.name,
       email: user.email,
       role: normaliseRole(user.role),
+      staffCategory: user.staffCategory,
       school: user.school,
       department: user.department,
       designation: user.designation,
+      registrationId: user.registrationId,
+      section: user.section,
+      semester: user.semester,
       token: generateToken(user._id, user.role),
     });
   } catch (err) {

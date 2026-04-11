@@ -1,18 +1,52 @@
 // Generates short-lived attendance QR codes for event check-ins.
-import { useState, useEffect, useCallback } from 'react';
+// For multi-day events, provides a day selector to generate separate codes per day.
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import QRCode from 'qrcode';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Copy, Check, RefreshCcw, Timer } from 'lucide-react';
+import { Download, Copy, Check, RefreshCcw, Timer, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
 
 interface QRCodeGeneratorProps {
   eventId: string;
   eventTitle: string;
+  startDate?: string;
+  endDate?: string;
 }
 
-export function QRCodeGenerator({ eventId, eventTitle }: QRCodeGeneratorProps) {
+// Produce an array of date strings between start and end (inclusive).
+function getDateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const startDt = new Date(start);
+  const endDt = new Date(end);
+  
+  // Normalise to midnight to ensure day-level comparison.
+  startDt.setHours(0, 0, 0, 0);
+  endDt.setHours(0, 0, 0, 0);
+  
+  if (isNaN(startDt.getTime()) || isNaN(endDt.getTime()) || endDt < startDt) return [];
+  
+  const cursor = new Date(startDt);
+  while (cursor <= endDt) {
+    dates.push(cursor.toISOString().split('T')[0]); // YYYY-MM-DD
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+export function QRCodeGenerator({ eventId, eventTitle, startDate, endDate }: QRCodeGeneratorProps) {
+  const days = useMemo(() => {
+    if (startDate && endDate) {
+      const range = getDateRange(startDate, endDate);
+      return range.length > 1 ? range : [];
+    }
+    return [];
+  }, [startDate, endDate]);
+
+  const isMultiDay = days.length > 1;
+
+  const [selectedDay, setSelectedDay] = useState<string | undefined>(isMultiDay ? days[0] : undefined);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [attendanceUrl, setAttendanceUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -22,13 +56,13 @@ export function QRCodeGenerator({ eventId, eventTitle }: QRCodeGeneratorProps) {
   const { toast } = useToast();
 
   // Request a fresh attendance code and render it to a QR image.
-  const generateQRCode = useCallback(async () => {
+  const generateQRCode = useCallback(async (dayDate?: string) => {
     setLoading(true);
     try {
-      const { code, expiresAt } = await apiService.requestAttendanceCode(eventId);
-      setCode(code);
-      setExpiresAt(expiresAt);
-      const urlForQr = await apiService.generateQRCode(eventId, code);
+      const result = await apiService.requestAttendanceCode(eventId, dayDate);
+      setCode(result.code);
+      setExpiresAt(result.expiresAt);
+      const urlForQr = await apiService.generateQRCode(eventId, result.code);
       setAttendanceUrl(urlForQr);
       const url = await QRCode.toDataURL(urlForQr, {
         width: 300,
@@ -52,14 +86,15 @@ export function QRCodeGenerator({ eventId, eventTitle }: QRCodeGeneratorProps) {
   }, [eventId, toast]);
 
   useEffect(() => {
-    generateQRCode();
-  }, [eventId, generateQRCode]);
+    generateQRCode(selectedDay);
+  }, [eventId, selectedDay, generateQRCode]);
 
   const downloadQRCode = () => {
     const link = document.createElement('a');
     link.href = qrCodeUrl;
     const safeCode = code ? `_${code.slice(0, 6)}` : '';
-    link.download = `${eventTitle.replace(/\s+/g, '_')}${safeCode}_QR.png`;
+    const dayLabel = selectedDay ? `_${selectedDay}` : '';
+    link.download = `${eventTitle.replace(/\s+/g, '_')}${dayLabel}${safeCode}_QR.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -89,12 +124,47 @@ export function QRCodeGenerator({ eventId, eventTitle }: QRCodeGeneratorProps) {
     }
   };
 
+  const formatDayLabel = (dateStr: string) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
   return (
     <Card className="bg-gradient-card shadow-card">
       <CardHeader>
-        <CardTitle className="text-center">QR Code for {eventTitle}</CardTitle>
+        <CardTitle className="text-center">
+          QR Code for {eventTitle}
+          {isMultiDay && selectedDay && (
+            <span className="block text-sm font-normal text-muted-foreground mt-1">
+              Day: {formatDayLabel(selectedDay)}
+            </span>
+          )}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col items-center space-y-4">
+        {/* Multi-day selector */}
+        {isMultiDay && (
+          <div className="w-full">
+            <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
+              <CalendarDays className="w-4 h-4" />
+              <span>Select day</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {days.map((day) => (
+                <Button
+                  key={day}
+                  variant={selectedDay === day ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedDay(day)}
+                  className="text-xs"
+                >
+                  {formatDayLabel(day)}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {qrCodeUrl && (
           <div className="bg-white p-4 rounded-lg shadow-inner">
             <img src={qrCodeUrl} alt="QR Code" className="w-64 h-64" />
@@ -137,7 +207,7 @@ export function QRCodeGenerator({ eventId, eventTitle }: QRCodeGeneratorProps) {
             {copied ? 'Copied!' : 'Copy URL'}
           </Button>
           <Button
-            onClick={generateQRCode}
+            onClick={() => generateQRCode(selectedDay)}
             variant="outline"
             className="flex-1 gap-2"
             disabled={loading}

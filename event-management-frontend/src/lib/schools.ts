@@ -8,23 +8,7 @@ export const SCHOOL_BRANCHES: SchoolBranch[] = [
   {
     school: 'Manipal Institute of Technology',
     branches: [
-      'Aeronautical Engineering',
-      'Automobile Engineering',
-      'Biomedical Engineering',
-      'Biotechnology',
-      'Chemical Engineering',
-      'Civil Engineering',
       'School of Computer Science',
-      'Electrical & Electronics Engineering',
-      'Electronics & Communication Engineering',
-      'Electronics & Instrumentation Engineering',
-      'Electronics Engineering',
-      'Industrial Engineering',
-      'Information Technology',
-      'Mathematics & Computing',
-      'Mechanical Engineering',
-      'Mechatronics',
-      'Media Technology',
     ],
   },
   {

@@ -17,7 +17,7 @@ const eventSchema = new mongoose.Schema({
   department: { type: String },
   category: {
     type: String,
-    enum: ['seminar', 'workshop', 'competition', 'guest-lecture', 'hackathon', 'orientation', 'cultural', 'sports', 'department-meeting', 'other'],
+    enum: ['seminar', 'workshop', 'competition', 'guest-lecture', 'hackathon', 'orientation', 'cultural', 'sports', 'department-meeting', 'class-committee-meeting', 'management-meeting', 'other'],
     default: 'other',
   },
   eventFormat: {
@@ -54,10 +54,10 @@ const eventSchema = new mongoose.Schema({
     enum: ['open', 'invite-only'],
     default: 'invite-only',
   },
-  allowSelfCheckIn: { type: Boolean, default: true },
+  targetDean: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   status: {
     type: String,
-    enum: ['draft', 'scheduled', 'ongoing', 'completed'],
+    enum: ['draft', 'scheduled', 'ongoing', 'completed', 'cancelled'],
     default: 'draft',
   },
   requiresApproval: { type: Boolean, default: true },
@@ -86,8 +86,11 @@ const eventSchema = new mongoose.Schema({
     email: { type: String },
     phone: { type: String },
   }],
-  attendanceCode: { type: String },
-  attendanceCodeExpiresAt: { type: Date },
+  attendanceCodes: [{
+    dayDate: { type: String },
+    code: { type: String },
+    expiresAt: { type: Date },
+  }],
   feedbackCode: { type: String },
   feedbackCodeExpiresAt: { type: Date },
   finalizedAt: { type: Date },
@@ -96,8 +99,10 @@ const eventSchema = new mongoose.Schema({
     registrationId: { type: String },
     signature: { type: String },
     capturedAt: { type: Date, default: Date.now },
+    dayDate: { type: String },
   }],
   feedbackOpen: { type: Boolean, default: false },
+  attendanceClosed: { type: Boolean, default: false },
   report: {
     generatedAt: { type: Date },
     attendeeCount: { type: Number, default: 0 },

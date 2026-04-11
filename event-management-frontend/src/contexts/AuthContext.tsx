@@ -11,6 +11,10 @@ interface RegisterPayload {
   school?: string;
   department?: string;
   designation?: string;
+  staffCategory?: string;
+  registrationId?: string;
+  section?: string;
+  semester?: number;
 }
 
 interface AuthContextType {
@@ -59,9 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async ({ name, email, password, role, school, department, designation }: RegisterPayload) => {
+  const register = async ({ name, email, password, role, school, department, designation, staffCategory, registrationId, section, semester }: RegisterPayload) => {
     try {
-      const { user, token } = await apiService.register({ name, email, password, role, school, department, designation });
+      const { user, token } = await apiService.register({ name, email, password, role, school, department, designation, staffCategory, registrationId, section, semester });
       setUser(user);
       localStorage.setItem('auth_user', JSON.stringify(user));
       localStorage.setItem('auth_token', token);

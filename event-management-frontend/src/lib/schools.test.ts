@@ -11,7 +11,6 @@ describe('Schools Logic', () => {
 
     it('should return correct departments for MIT', () => {
         const branches = getBranchesForSchool('Manipal Institute of Technology');
-        expect(branches).toContain('Aeronautical Engineering');
         expect(branches).toContain('School of Computer Science');
     });
 
