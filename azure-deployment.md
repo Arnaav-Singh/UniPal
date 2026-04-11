@@ -106,7 +106,114 @@ open $FRONT_URL                                       # UI should call the API s
   ```
 - Custom domain & HTTPS: `az webapp config hostname add …`; for static site, front with Azure CDN/Front Door.
 - Autoscale (prod): `az monitor autoscale create …` targeting the App Service plan.
-- CI/CD: GitHub Actions with `azure/login`, `azure/webapps-deploy` (backend), and `az storage blob upload-batch` (frontend). Store secrets (`AZURE_CREDENTIALS`, `MONGO_URI`) in repo secrets.
+
+## CI/CD with GitHub Actions (recommended)
+
+**1) Create an Azure service principal for GitHub OIDC**
+```bash
+RG_ID=$(az group show -n $RG --query id -o tsv)
+az ad sp create-for-rbac \
+  --name github-oidc-event \
+  --role contributor \
+  --scopes "$RG_ID" \
+  --sdk-auth \
+  > sp.json
+```
+- Copy contents of `sp.json` to a GitHub secret named `AZURE_CREDENTIALS`.
+- In GitHub repo → Settings → Security → Actions → OpenID Connect: add a federated credential (tenant/workflow scope) matching your repo, branch `main`.
+
+**2) Required GitHub secrets/vars**
+- `AZURE_CREDENTIALS`: JSON from `sp.json`.
+- `RESOURCE_GROUP`, `LOCATION`, `COSMOS`, `WEBAPP`, `STORAGE`: same names used at provisioning time.
+- Optionally `NODE_VERSION` (default 18.x).
+
+**3) Workflow file** — `.github/workflows/deploy.yml`
+```yaml
+name: Deploy to Azure
+on:
+  push:
+    branches: [ main ]
+
+env:
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+  WEBAPP: ${{ secrets.WEBAPP }}
+  STORAGE: ${{ secrets.STORAGE }}
+  COSMOS: ${{ secrets.COSMOS }}
+  NODE_VERSION: 18.x
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          tenant-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
+          subscription-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+      - name: Install backend deps
+        working-directory: event-management-backend
+        run: npm ci
+      - name: Test backend
+        working-directory: event-management-backend
+        run: npm test --if-present
+      - name: Zip backend
+        working-directory: event-management-backend
+        run: |
+          zip -r ../backend.zip . -x "node_modules/*" ".git/*"
+      - name: Deploy backend
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.WEBAPP }}
+          package: backend.zip
+
+  frontend:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          tenant-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
+          subscription-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+      - name: Set API base URL
+        run: echo "REACT_APP_API_BASE_URL=https://${{ env.WEBAPP }}.azurewebsites.net" >> $GITHUB_ENV
+      - name: Install frontend deps
+        working-directory: event-management-frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: event-management-frontend
+        run: npm run build
+      - name: Enable static website
+        run: |
+          az storage blob service-properties update \
+            --account-name ${{ env.STORAGE }} \
+            --static-website --index-document index.html --error-document index.html
+      - name: Upload build to $web
+        run: |
+          az storage blob upload-batch \
+            --account-name ${{ env.STORAGE }} \
+            --auth-mode login \
+            -s event-management-frontend/build -d '$web'
+```
+
+**4) First-time notes**
+- Ensure the storage account, web app, and cosmos names already exist (provision once via CLI). If you want the workflow to provision infra, add a separate “infra” job with `az group create`, etc.
+- The `azure/login` step uses OIDC; no client secrets are stored.
+- Frontend job depends on backend to avoid deploying an API-less UI during first push.
+
+**5) Rollback strategy**
+- Keep previous zip artifacts (Actions artifacts) to redeploy with `az webapp deployment source config-zip` if needed.
+- For frontend, re-upload a prior `build/` artifact to `$web`.
 
 ## Cleanup
 ```bash
