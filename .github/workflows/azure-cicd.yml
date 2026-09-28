@@ -34,7 +34,7 @@ jobs:
     - name: Log in to Azure Container Registry
       uses: docker/login-action@v3
       with:
-        registry: unipalevents2052.azurecr.io
+        registry: unipalacr3940.azurecr.io
         username: ${{ secrets.ACR_USERNAME }}
         password: ${{ secrets.ACR_PASSWORD }}
 
@@ -43,7 +43,7 @@ jobs:
       with:
         context: ./event-management-backend
         push: true
-        tags: unipalevents2052.azurecr.io/event-backend:latest
+        tags: unipalacr3940.azurecr.io/event-backend:latest
         platforms: linux/amd64
 
     - name: Deploy to Azure Web App
@@ -75,8 +75,8 @@ jobs:
     - name: Build React App
       run: npm run build
       env:
-        VITE_API_URL: https://unipal-backend2052-a8h5g0dac9bmchaq.centralindia-01.azurewebsites.net
+        VITE_API_URL: https://unipal-backend-3940.azurewebsites.net
 
     - name: Upload to Azure Storage
       run: |
-        az storage blob upload-batch --account-name unipalfrontend2052 --source ./dist --destination '$web' --overwrite --connection-string "${{ secrets.STORAGE_CONNECTION_STRING }}"
+        az storage blob upload-batch --account-name unipalfe3940 --source ./dist --destination '$web' --overwrite --connection-string "${{ secrets.STORAGE_CONNECTION_STRING }}"
